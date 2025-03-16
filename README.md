@@ -3,4 +3,5 @@ Zanči odvojeni:
   1. Backend
   2. Frontend web
   3. Frontend mobile
+     
 Comittati ćete na folderu koji sadržava sva stri kako nebi nastalo problema
