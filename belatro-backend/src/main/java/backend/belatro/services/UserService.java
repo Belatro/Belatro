@@ -28,6 +28,7 @@ public class UserService {
         return userRepo.findById(id);
     }
     public User createUser(User user) {
+        user.setId(null);
         return userRepo.save(user);
     }
     @Transactional
