@@ -1,10 +1,18 @@
 package backend.belatro;
 
+import backend.belatro.util.DotenvInitializer;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration;
+import org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration;
 
-@SpringBootApplication
+@SpringBootApplication(exclude = {RedisAutoConfiguration.class, RedisRepositoriesAutoConfiguration.class})
 public class BelatroApplication {
+
+	static {
+		DotenvInitializer.init();
+	}
+
 
 	public static void main(String[] args) {
 		SpringApplication.run(BelatroApplication.class, args);
