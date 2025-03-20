@@ -24,12 +24,12 @@ public class UserController {
     }
 
     @GetMapping("/findAll")
-    public ResponseEntity<List<User>> findAllUsers(){
+    public ResponseEntity<List<User>> getAllUsers(){
         List<User> users = userService.findAll();
         return ResponseEntity.ok(users);
     }
     @GetMapping("/{id}")
-    public ResponseEntity<User> findUserById(@PathVariable String id){
+    public ResponseEntity<User> getUserById(@PathVariable String id){
         User user = userService.findById(id)
                 .orElseThrow(() -> new UserNotFoundException("User not found with id " + id));
         return ResponseEntity.ok(user);
