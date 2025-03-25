@@ -2,6 +2,7 @@ package backend.belatro.controllers;
 
 import backend.belatro.dtos.JoinLobbyRequestDTO;
 import backend.belatro.dtos.LobbyDTO;
+import backend.belatro.dtos.MatchDTO;
 import backend.belatro.dtos.TeamSwitchRequestDTO;
 import backend.belatro.services.LobbyService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,5 +53,10 @@ public class LobbyController {
     public ResponseEntity<LobbyDTO> switchTeam(@RequestBody TeamSwitchRequestDTO switchRequest) {
         LobbyDTO updated = lobbyService.switchTeam(switchRequest);
         return ResponseEntity.ok(updated);
+    }
+    @PostMapping("/{lobbyId}/start-match")
+    public ResponseEntity<MatchDTO> startMatch(@PathVariable String lobbyId) {
+        MatchDTO matchDTO = lobbyService.startMatch(lobbyId);
+        return ResponseEntity.ok(matchDTO);
     }
 }

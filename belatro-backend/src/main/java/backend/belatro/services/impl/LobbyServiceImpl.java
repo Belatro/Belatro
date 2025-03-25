@@ -2,19 +2,25 @@ package backend.belatro.services.impl;
 
 import backend.belatro.dtos.JoinLobbyRequestDTO;
 import backend.belatro.dtos.LobbyDTO;
+import backend.belatro.dtos.MatchDTO;
 import backend.belatro.dtos.TeamSwitchRequestDTO;
-import backend.belatro.dtos.LobbyDTO.UserSimpleDTO;
+import backend.belatro.enums.lobbyStatus;
+import backend.belatro.dtos.UserUpdateDTO;
+import backend.belatro.enums.GameMode;
 import backend.belatro.models.Lobbies;
 import backend.belatro.models.User;
 import backend.belatro.repos.LobbiesRepo;
 import backend.belatro.repos.UserRepo;
+import backend.belatro.services.IMatchService;
 import backend.belatro.services.LobbyService;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
@@ -22,12 +28,14 @@ import java.util.stream.Collectors;
 public class LobbyServiceImpl implements LobbyService {
     private final LobbiesRepo lobbyRepo;
     private final UserRepo userRepo;
+    private final IMatchService matchService;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
     @Autowired
-    public LobbyServiceImpl(LobbiesRepo lobbyRepo, UserRepo userRepo) {
+    public LobbyServiceImpl(LobbiesRepo lobbyRepo, UserRepo userRepo, IMatchService matchService) {
         this.lobbyRepo = lobbyRepo;
         this.userRepo = userRepo;
+        this.matchService = matchService;
     }
 
     @Override
@@ -153,6 +161,49 @@ public class LobbyServiceImpl implements LobbyService {
         lobby = lobbyRepo.save(lobby);
         return mapToDTO(lobby);
     }
+    @Override
+    public MatchDTO startMatch(String lobbyId) {
+        Lobbies lobby = lobbyRepo.findById(lobbyId)
+                .orElseThrow(() -> new RuntimeException("Lobby not found"));
+
+        lobby.setStatus(lobbyStatus.CLOSED);
+
+        MatchDTO matchDTO = new MatchDTO();
+
+        List<UserUpdateDTO> teamA = lobby.getTeamAPlayers().stream()
+                .map(this::convertUserToUserUpdate)
+                .collect(Collectors.toList());
+        matchDTO.setTeamA(teamA);
+
+        List<UserUpdateDTO> teamB = lobby.getTeamBPlayers().stream()
+                .map(this::convertUserToUserUpdate)
+                .collect(Collectors.toList());
+        matchDTO.setTeamB(teamB);
+
+        LobbyDTO originLobby = mapToDTO(lobby);
+        matchDTO.setOriginLobby(originLobby);
+
+        if ("RANKED".equalsIgnoreCase(lobby.getGameMode())) {
+            matchDTO.setGameMode(GameMode.RANKED);
+        } else {
+            matchDTO.setGameMode(GameMode.CASUAL);
+        }
+
+        // Set start time and other match details
+        matchDTO.setStartTime(new Date());
+        matchDTO.setMoves(null);
+        matchDTO.setResult(null);
+
+        // Create the match using your match service
+        return matchService.createMatch(matchDTO);
+    }
+
+    // Helper: Convert User entity to UserUpdateDTO
+    private UserUpdateDTO convertUserToUserUpdate(User user) {
+        UserUpdateDTO dto = new UserUpdateDTO();
+        BeanUtils.copyProperties(user, dto);
+        return dto;
+    }
 
     private LobbyDTO mapToDTO(Lobbies lobby) {
         LobbyDTO dto = new LobbyDTO();
@@ -162,25 +213,25 @@ public class LobbyServiceImpl implements LobbyService {
         dto.setStatus(lobby.getStatus());
         dto.setCreatedAt(lobby.getCreatedAt());
         if (lobby.getHostUser() != null) {
-            UserSimpleDTO hostDto = new UserSimpleDTO();
+            LobbyDTO.UserSimpleDTO hostDto = new LobbyDTO.UserSimpleDTO();
             hostDto.setId(lobby.getHostUser().getId());
             hostDto.setUsername(lobby.getHostUser().getUsername());
             dto.setHostUser(hostDto);
         }
         dto.setTeamAPlayers(lobby.getTeamAPlayers().stream().map(u -> {
-            UserSimpleDTO udto = new UserSimpleDTO();
+            LobbyDTO.UserSimpleDTO udto = new LobbyDTO.UserSimpleDTO();
             udto.setId(u.getId());
             udto.setUsername(u.getUsername());
             return udto;
         }).collect(Collectors.toList()));
         dto.setTeamBPlayers(lobby.getTeamBPlayers().stream().map(u -> {
-            UserSimpleDTO udto = new UserSimpleDTO();
+            LobbyDTO.UserSimpleDTO udto = new LobbyDTO.UserSimpleDTO();
             udto.setId(u.getId());
             udto.setUsername(u.getUsername());
             return udto;
         }).collect(Collectors.toList()));
         dto.setUnassignedPlayers(lobby.getUnassignedPlayers().stream().map(u -> {
-            UserSimpleDTO udto = new UserSimpleDTO();
+            LobbyDTO.UserSimpleDTO udto = new LobbyDTO.UserSimpleDTO();
             udto.setId(u.getId());
             udto.setUsername(u.getUsername());
             return udto;
@@ -190,3 +241,4 @@ public class LobbyServiceImpl implements LobbyService {
         return dto;
     }
 }
+
