@@ -29,6 +29,7 @@ public class UserService {
     }
     public User createUser(User user) {
         user.setId(null);
+        user.setEloRating(1200);
         return userRepo.save(user);
     }
     @Transactional
@@ -43,6 +44,7 @@ public class UserService {
         existingUser.setLevel(updateDTO.getLevel());
         existingUser.setExpPoints(updateDTO.getExpPoints());
         existingUser.setLastLogin(updateDTO.getLastLogin());
+        existingUser.setGamesPlayed(updateDTO.getGamesPlayed());
 
         return userRepo.save(existingUser);
     }

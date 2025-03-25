@@ -15,4 +15,5 @@ public class UserUpdateDTO {
     private int level;
     private int expPoints;
     private Date lastLogin;
+    private int gamesPlayed;
 }
