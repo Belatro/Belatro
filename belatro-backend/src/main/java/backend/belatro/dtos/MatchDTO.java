@@ -9,8 +9,8 @@ import java.util.List;
 @Data
 public class MatchDTO {
     private String id;
-    private List<UserUpdateDTO> teamA;
-    private List<UserUpdateDTO> teamB;
+    private List<LobbyDTO.UserSimpleDTO> teamA;
+    private List<LobbyDTO.UserSimpleDTO> teamB;
     private LobbyDTO originLobby;
     private GameMode gameMode;
     private List<Move> moves;

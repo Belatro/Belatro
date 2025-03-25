@@ -29,6 +29,7 @@ public class UserService {
     }
     public User createUser(User user) {
         user.setId(null);
+        user.setEloRating(1200);
         return userRepo.save(user);
     }
     @Transactional

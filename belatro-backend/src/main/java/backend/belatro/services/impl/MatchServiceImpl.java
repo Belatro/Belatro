@@ -1,18 +1,17 @@
 package backend.belatro.services.impl;
 
+import backend.belatro.dtos.LobbyDTO;
 import backend.belatro.dtos.MatchDTO;
 import backend.belatro.dtos.UserUpdateDTO;
-import backend.belatro.dtos.LobbyDTO;
+import backend.belatro.models.Lobbies;
 import backend.belatro.models.Match;
 import backend.belatro.models.User;
-import backend.belatro.models.Lobbies;
 import backend.belatro.repos.MatchRepo;
 import backend.belatro.services.IMatchService;
 import backend.belatro.util.MappingUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -29,8 +28,10 @@ public class MatchServiceImpl implements IMatchService {
 
     @Override
     public MatchDTO createMatch(MatchDTO matchDTO) {
+        System.out.println("Entering createMatch with MatchDTO: " + matchDTO);
         Match match = toEntity(matchDTO);
         Match savedMatch = matchRepo.save(match);
+        System.out.println("Saved Match id: " + savedMatch.getId());
         return toDTO(savedMatch);
     }
 
@@ -52,10 +53,10 @@ public class MatchServiceImpl implements IMatchService {
     @Override
     public MatchDTO updateMatch(String id, MatchDTO matchDTO) {
         return matchRepo.findById(id)
-                .map(existingMatch -> {
-                    Match updatedMatch = toEntity(matchDTO);
-                    updatedMatch.setId(existingMatch.getId());
-                    return toDTO(matchRepo.save(updatedMatch));
+                .map(existing -> {
+                    Match updated = toEntity(matchDTO);
+                    updated.setId(existing.getId());
+                    return toDTO(matchRepo.save(updated));
                 })
                 .orElseThrow(() -> new RuntimeException("Match not found with id: " + id));
     }
@@ -65,8 +66,8 @@ public class MatchServiceImpl implements IMatchService {
         matchRepo.deleteById(id);
     }
 
-
     private Match toEntity(MatchDTO dto) {
+        System.out.println("Converting MatchDTO to Match. DTO id: " + dto.getId());
         Match match = new Match();
         match.setId(dto.getId());
         match.setGameMode(dto.getGameMode());
@@ -74,55 +75,44 @@ public class MatchServiceImpl implements IMatchService {
         match.setResult(dto.getResult());
         match.setStartTime(dto.getStartTime());
         match.setEndTime(dto.getEndTime());
-
         match.setTeamA(toUserEntities(dto.getTeamA()));
         match.setTeamB(toUserEntities(dto.getTeamB()));
-
         if (dto.getOriginLobby() != null) {
-            match.setOriginLobby(toLobbyEntity(dto.getOriginLobby()));
+            String lobbyId = dto.getOriginLobby().getId();
+            System.out.println("Origin lobby id from DTO: " + lobbyId);
+            if (lobbyId == null) {
+                throw new RuntimeException("Origin lobby id is null – ensure the LobbyDTO is persistent");
+            }
+            Lobbies lobbyRef = new Lobbies();
+            lobbyRef.setId(lobbyId);
+            System.out.println("Using lobby stub with id: " + lobbyRef.getId());
+            match.setOriginLobby(lobbyRef);
         }
         return match;
     }
 
-    private List<User> toUserEntities(List<UserUpdateDTO> userDtos) {
-        if (userDtos == null) {
+
+    private List<User> toUserEntities(List<LobbyDTO.UserSimpleDTO> dtos) {
+        if (dtos == null) {
+            System.out.println("UserSimpleDTO list is null or empty.");
             return Collections.emptyList();
         }
-        return userDtos.stream()
+        return dtos.stream()
                 .map(this::toUserEntity)
                 .collect(Collectors.toList());
     }
 
-    private User toUserEntity(UserUpdateDTO dto) {
+    private User toUserEntity(LobbyDTO.UserSimpleDTO dto) {
+        System.out.println("Converting UserSimpleDTO to User. DTO: " + dto);
         User user = new User();
-        BeanUtils.copyProperties(dto, user);
+        user.setId(dto.getId());
+        user.setUsername(dto.getUsername());
+        System.out.println("Converted User id: " + user.getId());
         return user;
     }
-
-    private Lobbies toLobbyEntity(LobbyDTO dto) {
-        Lobbies lobby = new Lobbies();
-        BeanUtils.copyProperties(dto, lobby);
-
-        if (dto.getHostUser() != null) {
-            lobby.setHostUser(toUserEntitySimple(dto.getHostUser()));
-        }
-
-        dto.setTeamAPlayers(MappingUtils.mapList(lobby.getTeamAPlayers(), this::toUserSimpleDTO));
-        dto.setTeamBPlayers(MappingUtils.mapList(lobby.getTeamBPlayers(), this::toUserSimpleDTO));
-        dto.setUnassignedPlayers(MappingUtils.mapList(lobby.getUnassignedPlayers(), this::toUserSimpleDTO));
-
-        return lobby;
-    }
-
-
-    private User toUserEntitySimple(LobbyDTO.UserSimpleDTO simpleDTO) {
-        User user = new User();
-        BeanUtils.copyProperties(simpleDTO, user);
-        return user;
-    }
-
 
     private MatchDTO toDTO(Match match) {
+        System.out.println("Converting Match to MatchDTO. Match id: " + match.getId());
         MatchDTO dto = new MatchDTO();
         dto.setId(match.getId());
         dto.setGameMode(match.getGameMode());
@@ -130,50 +120,44 @@ public class MatchServiceImpl implements IMatchService {
         dto.setResult(match.getResult());
         dto.setStartTime(match.getStartTime());
         dto.setEndTime(match.getEndTime());
-
         dto.setTeamA(toUserDTOs(match.getTeamA()));
         dto.setTeamB(toUserDTOs(match.getTeamB()));
-
         if (match.getOriginLobby() != null) {
             dto.setOriginLobby(toLobbyDTO(match.getOriginLobby()));
         }
         return dto;
     }
 
-    private List<UserUpdateDTO> toUserDTOs(List<User> users) {
+    private List<LobbyDTO.UserSimpleDTO> toUserDTOs(List<User> users) {
         if (users == null) {
+            System.out.println("User list is null or empty.");
             return Collections.emptyList();
         }
         return users.stream()
-                .map(this::toUserDTO)
+                .map(this::toUserSimpleDTO)
                 .collect(Collectors.toList());
     }
 
-    private UserUpdateDTO toUserDTO(User user) {
-        UserUpdateDTO dto = new UserUpdateDTO();
-        BeanUtils.copyProperties(user, dto);
-        return dto;
+    private LobbyDTO.UserSimpleDTO toUserSimpleDTO(User user) {
+        System.out.println("Converting User to UserSimpleDTO. User id: " + user.getId());
+        LobbyDTO.UserSimpleDTO simple = new LobbyDTO.UserSimpleDTO();
+        simple.setId(user.getId());
+        simple.setUsername(user.getUsername());
+        System.out.println("Converted UserSimpleDTO: " + simple);
+        return simple;
     }
 
     private LobbyDTO toLobbyDTO(Lobbies lobby) {
+        System.out.println("Converting Lobbies to LobbyDTO. Lobby id: " + lobby.getId());
         LobbyDTO dto = new LobbyDTO();
         BeanUtils.copyProperties(lobby, dto);
-
         if (lobby.getHostUser() != null) {
             dto.setHostUser(toUserSimpleDTO(lobby.getHostUser()));
         }
-
         dto.setTeamAPlayers(MappingUtils.mapList(lobby.getTeamAPlayers(), this::toUserSimpleDTO));
         dto.setTeamBPlayers(MappingUtils.mapList(lobby.getTeamBPlayers(), this::toUserSimpleDTO));
         dto.setUnassignedPlayers(MappingUtils.mapList(lobby.getUnassignedPlayers(), this::toUserSimpleDTO));
-
+        System.out.println("Converted LobbyDTO: " + dto);
         return dto;
-    }
-
-
-    private LobbyDTO.UserSimpleDTO toUserSimpleDTO(User user) {
-        LobbyDTO.UserSimpleDTO simpleDTO = new LobbyDTO.UserSimpleDTO();
-        BeanUtils.copyProperties(user, simpleDTO);
-        return simpleDTO;
     }
 }

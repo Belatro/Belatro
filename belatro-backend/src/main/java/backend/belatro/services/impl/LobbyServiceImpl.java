@@ -165,42 +165,35 @@ public class LobbyServiceImpl implements LobbyService {
     public MatchDTO startMatch(String lobbyId) {
         Lobbies lobby = lobbyRepo.findById(lobbyId)
                 .orElseThrow(() -> new RuntimeException("Lobby not found"));
-
+        int totalPlayers = lobby.getTeamAPlayers().size() + lobby.getTeamBPlayers().size();
+        if (totalPlayers < 4) {
+            throw new RuntimeException("Cannot start match: there must be at least 4 players across both teams");
+        }
         lobby.setStatus(lobbyStatus.CLOSED);
-
+        List<LobbyDTO.UserSimpleDTO> teamA = lobby.getTeamAPlayers().stream()
+                .map(this::convertUserToUserSimple)
+                .collect(Collectors.toList());
+        List<LobbyDTO.UserSimpleDTO> teamB = lobby.getTeamBPlayers().stream()
+                .map(this::convertUserToUserSimple)
+                .collect(Collectors.toList());
         MatchDTO matchDTO = new MatchDTO();
-
-        List<UserUpdateDTO> teamA = lobby.getTeamAPlayers().stream()
-                .map(this::convertUserToUserUpdate)
-                .collect(Collectors.toList());
         matchDTO.setTeamA(teamA);
-
-        List<UserUpdateDTO> teamB = lobby.getTeamBPlayers().stream()
-                .map(this::convertUserToUserUpdate)
-                .collect(Collectors.toList());
         matchDTO.setTeamB(teamB);
-
         LobbyDTO originLobby = mapToDTO(lobby);
         matchDTO.setOriginLobby(originLobby);
-
         if ("RANKED".equalsIgnoreCase(lobby.getGameMode())) {
             matchDTO.setGameMode(GameMode.RANKED);
         } else {
             matchDTO.setGameMode(GameMode.CASUAL);
         }
-
-        // Set start time and other match details
         matchDTO.setStartTime(new Date());
         matchDTO.setMoves(null);
         matchDTO.setResult(null);
-
-        // Create the match using your match service
         return matchService.createMatch(matchDTO);
     }
 
-    // Helper: Convert User entity to UserUpdateDTO
-    private UserUpdateDTO convertUserToUserUpdate(User user) {
-        UserUpdateDTO dto = new UserUpdateDTO();
+    private LobbyDTO.UserSimpleDTO convertUserToUserSimple(User user) {
+        LobbyDTO.UserSimpleDTO dto = new LobbyDTO.UserSimpleDTO();
         BeanUtils.copyProperties(user, dto);
         return dto;
     }

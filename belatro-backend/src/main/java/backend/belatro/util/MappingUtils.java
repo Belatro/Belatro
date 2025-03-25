@@ -10,6 +10,8 @@ public class MappingUtils {
         if (source == null) {
             return Collections.emptyList();
         }
-        return source.stream().map(mapper).collect(Collectors.toList());
+        return source.stream()
+                .map(mapper)
+                .collect(Collectors.toList());
     }
 }
