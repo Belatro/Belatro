@@ -43,6 +43,7 @@ public class UserService {
         existingUser.setLevel(updateDTO.getLevel());
         existingUser.setExpPoints(updateDTO.getExpPoints());
         existingUser.setLastLogin(updateDTO.getLastLogin());
+        existingUser.setGamesPlayed(updateDTO.getGamesPlayed());
 
         return userRepo.save(existingUser);
     }

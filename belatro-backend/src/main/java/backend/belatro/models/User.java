@@ -21,4 +21,5 @@ public class User {
     private int level;
     private int expPoints;
     private Date lastLogin;
+    private int gamesPlayed;
 }
