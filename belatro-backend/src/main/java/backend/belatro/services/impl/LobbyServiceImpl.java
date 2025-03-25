@@ -170,6 +170,7 @@ public class LobbyServiceImpl implements LobbyService {
             throw new RuntimeException("Cannot start match: there must be at least 4 players across both teams");
         }
         lobby.setStatus(lobbyStatus.CLOSED);
+        lobby = lobbyRepo.save(lobby);
         List<LobbyDTO.UserSimpleDTO> teamA = lobby.getTeamAPlayers().stream()
                 .map(this::convertUserToUserSimple)
                 .collect(Collectors.toList());
