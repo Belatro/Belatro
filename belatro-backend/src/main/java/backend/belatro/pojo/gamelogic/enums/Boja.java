@@ -1,4 +1,4 @@
-package backend.belatro.pojo.enums;
+package backend.belatro.pojo.gamelogic.enums;
 
 public enum Boja {
     KARA,

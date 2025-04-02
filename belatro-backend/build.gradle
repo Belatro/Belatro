@@ -42,7 +42,13 @@ dependencies {
 	//json serialization
 	implementation 'com.fasterxml.jackson.core:jackson-databind'
 	implementation 'org.apache.commons:commons-pool2:2.11.1'
-	implementation 'io.lettuce:lettuce-core:6.5.5.RELEASE'}
+	implementation 'io.lettuce:lettuce-core:6.5.5.RELEASE'
+	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.11.4'
+	testImplementation 'org.junit.jupiter:junit-jupiter-params:5.11.4'
+	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.11.4'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+
+}
 
 tasks.named('test') {
 	useJUnitPlatform()

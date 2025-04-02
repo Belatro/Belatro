@@ -1,16 +1,16 @@
-package backend.belatro.pojo;
+package backend.belatro.pojo.gamelogic;
 
-import backend.belatro.pojo.enums.Boja;
-import backend.belatro.pojo.enums.Rank;
+import backend.belatro.pojo.gamelogic.enums.Boja;
+import backend.belatro.pojo.gamelogic.enums.Rank;
 import lombok.Data;
 
 
 @Data
-public class Karta {
+public class Card {
     private final Boja boja;
     private final Rank rank;
 
-    public Karta(Boja boja, Rank rank) {
+    public Card(Boja boja, Rank rank) {
         this.boja = boja;
         this.rank = rank;
     }
