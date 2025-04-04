@@ -1,0 +1,97 @@
+
+body {
+  background-color: #323c39 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-family: Arial, sans-serif !important;
+  color: white !important;
+}
+
+.home-container {
+  text-align: center !important;
+  margin-top: 50px !important;
+}
+
+
+.navbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 20px 20px !important;
+  background-color: #27232a !important;
+  color: white !important;
+  font-size: 18px !important;
+  position: relative !important;
+  height: 80px !important;
+}
+
+.nav-left, .nav-right {
+  display: flex;
+  gap: 15px;
+}
+
+.nav-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 48px;
+  font-weight: bold;
+}
+
+.nav-link {
+  text-decoration: none;
+  color: white;
+  font-size: 18px;
+  transition: color 0.2s ease-in-out;
+}
+
+.nav-link:hover {
+  color: #ffcc00 !important; 
+}
+
+.button-container {
+  display: flex;
+  justify-content: center;
+  gap: 100px;
+  margin-top: 20px;
+}
+
+.game-button {
+  background-color: #27232a;
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+  width: 300px;
+  padding: 16px 52px;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background-color 0.2s ease-in-out;
+}
+
+.game-button:hover {
+  background-color: #332f35;
+}
+
+.card-container {
+  display: flex;
+  justify-content: center;
+  gap: 100px;
+  margin-top: 40px;
+  padding: 0;
+}
+
+.custom-card {
+  width: 300px !important;
+  background-color: #27232a !important;
+  color: white !important;
+  border-radius: 20px !important;
+  padding: 20px !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2) !important;
+  margin: 0 !important;
+}
+
+.custom-card .card-title {
+  font-size: 22px;
+  font-weight: bold;
+}
