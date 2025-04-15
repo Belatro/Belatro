@@ -7,9 +7,7 @@ import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Represents a Belot card game.
@@ -358,7 +356,7 @@ public class BelotGame {
         List<Player> playersWithHighestValue = declarations.entrySet().stream()
                 .filter(e -> e.getValue() == highestValue)
                 .map(Map.Entry::getKey)
-                .collect(Collectors.toList());
+                .toList();
 
         // If there's a tie, position in turn order decides
         Player winningPlayer;
