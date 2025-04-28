@@ -51,8 +51,10 @@ public class Trick {
 
 
     public boolean isComplete(int playerCount) {
+        System.out.println("Checking if trick is complete. Current plays: " + plays.size() + ", Required: " + playerCount);
         return plays.size() == playerCount;
     }
+
 
     /**
      * @return An unmodifiable map of player IDs to cards

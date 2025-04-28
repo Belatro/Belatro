@@ -8,7 +8,7 @@ import java.util.Collections;
 import java.util.List;
 
 public class Deck {
-    private final List<Card> cards = new ArrayList<>();
+    final List<Card> cards = new ArrayList<>();
 
     public Deck() {
         for (Boja boja : Boja.values()) {
@@ -56,12 +56,14 @@ public class Deck {
      * @return The 2 cards for the talon
      */
     public List<Card> dealTalon() {
-        if (cards.size() < 2) {
+        // Deal 2 cards per player (8 total) for the talon
+        if (cards.size() < 8) {
             throw new IllegalStateException("Not enough cards for talon");
         }
 
-        return deal(2);
+        return deal(8);
     }
+
 
     /**
      * Deals the remaining cards after trump is called

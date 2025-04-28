@@ -32,7 +32,9 @@ public enum GameState {
     /**
      * The game has been completed.
      */
-    COMPLETED;
+    COMPLETED,
+
+    HAND_COMPLETE;
 
     /**
      * @return A user-friendly description of the game state
@@ -45,6 +47,8 @@ public enum GameState {
             case PLAYING -> "Players are playing tricks";
             case SCORING -> "Round is being scored";
             case COMPLETED -> "Game is completed";
+            case HAND_COMPLETE -> "Hand is completed, ready for next hand";
+
         };
     }
 }

@@ -41,6 +41,9 @@ public class BelotGame {
     @Getter
     private Player currentLead;
 
+
+    private Player currentPlayer;
+
     @Getter
     private Player dealer;
 
@@ -59,7 +62,9 @@ public class BelotGame {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BelotGame.class);
 
-    
+    private int teamAHandPoints = 0;
+    private int teamBHandPoints = 0;
+
     private final Map<String, Boolean> belaAlreadyDeclared = new HashMap<>();
 
 
@@ -102,8 +107,17 @@ public class BelotGame {
         // 6 cards
         deck.dealInitialHands(turnOrder);
 
+        if (deck.getCardsRemaining() != 8) {
+            throw new IllegalStateException(
+                    "Unexpected number of cards remaining: " + deck.getCardsRemaining() +
+                            " (expected 8)"
+            );
+        }
+
         // 2 cards
         talon = deck.dealTalon();
+
+
 
         gameState = GameState.BIDDING;
 
@@ -235,11 +249,25 @@ public class BelotGame {
     private void setupFirstTrick() {
         // In many Belot variants, the first lead is given to the player after the dealer
         int dealerIndex = turnOrder.indexOf(dealer);
-        currentLead = turnOrder.get((dealerIndex + 1) % turnOrder.size());
+        int leadIndex = (dealerIndex + 1) % turnOrder.size();
+
+        // Set the current lead player
+        currentLead = turnOrder.get(leadIndex);
+
+        // IMPORTANT: Initialize the currentPlayer field to be the same as the lead player
+        currentPlayer = currentLead;
+
+        // Initialize the currentTrick with the trump suit
+        // Note: The Trick constructor in your code takes leadPlayerId and trump,
+        // but we should adapt based on your Trick implementation
+        currentTrick = new Trick(currentLead.getId(), trump);
+
+        // Set the game state to PLAYING
+        gameState = GameState.PLAYING;
 
         resetBelaDeclarations();
-
     }
+
 
     /**
      * Resets the bidding state for a new hand.
@@ -260,30 +288,23 @@ public class BelotGame {
      * Deals the remaining cards to players after trump is called.
      */
     private void dealRemainingCards() {
-        // Check if trump has been called
-        if (!trumpCalled) {
-            throw new IllegalStateException("Trump must be called before dealing remaining cards");
+        // Put the talon back into a temporary deck to deal
+        Deck tempDeck = new Deck();
+        tempDeck.cards.clear();  // Empty the fresh deck
+        // Add talon cards to temp deck
+        tempDeck.cards.addAll(talon);
+
+        // Deal 2 cards to each player from the talon
+        for (Player player : turnOrder) {
+            List<Card> currentHand = new ArrayList<>(player.getHand());
+            currentHand.addAll(tempDeck.deal(2));
+            player.setHand(currentHand);
         }
 
-        // Deal remaining cards to each player (2 more cards each)
-        deck.dealRemainingCards(turnOrder);
-
-        // Set the game state to declaration phase (or straight to play if no declarations)
-        gameState = GameState.DECLARATIONS;
-
-        // Process declarations (bela, sequences, etc.)
-        processDeclarations();
-
-        // Move to playing phase
-        gameState = GameState.PLAYING;
-
-        // Initialize the first trick
-        currentTrick = new Trick("First Trick", trump);
-
-        // Set the lead player for the first trick (player after dealer)
-        int dealerIndex = turnOrder.indexOf(dealer);
-        currentLead = turnOrder.get((dealerIndex + 1) % 4);
+        talon.clear();  // Talon is now empty
     }
+
+
 
     /**
      * Process all declarations from players and determine which ones count.
@@ -381,13 +402,25 @@ public class BelotGame {
         for (Player player : winningTeam.getPlayers()) {
             if (declarations.containsKey(player)) {
                 int points = declarations.get(player);
-                winningTeam.addPoints(points);
+                if (winningTeam == teamA) {
+                    teamAHandPoints += points;
+                    LOGGER.info("Added " + points + " declaration points to Team A hand points, now: " + teamAHandPoints);
+                } else {
+                    teamBHandPoints += points;
+                    LOGGER.info("Added " + points + " declaration points to Team B hand points, now: " + teamBHandPoints);
+                }
+
                 LOGGER.info("Player " + player.getId() + " " + declarationType +
                         " declaration of " + points + " points awarded to team");
 
 
             }
         }
+    }
+    private void advanceToNextPlayer(Player player) {
+        int currentIndex = turnOrder.indexOf(player);
+        int nextIndex = (currentIndex + 1) % turnOrder.size();
+        this.currentPlayer = turnOrder.get(nextIndex);
     }
 
 
@@ -437,8 +470,16 @@ public class BelotGame {
         // Award points to the player's team
         Team team = getPlayerTeam(player);
         if (team != null) {
-            team.addPoints(20);
+            if (team == teamA) {
+                teamAHandPoints += 20;
+                LOGGER.info("Added 20 bela points to Team A hand points, now: " + teamAHandPoints);
+            } else {
+                teamBHandPoints += 20;
+                LOGGER.info("Added 20 bela points to Team B hand points, now: " + teamBHandPoints);
+            }
+
             LOGGER.info("Player " + playerId + " declared Bela for 20 points");
+
         }
 
         // Mark player as having declared Bela for this hand
@@ -501,6 +542,10 @@ public class BelotGame {
         // Add the played card to the current trick.
         currentTrick.addPlay(player.getId(), playedCard);
 
+        if (!currentTrick.isComplete(turnOrder.size())) {
+            advanceToNextPlayer(player);
+        }
+
         // Check if the trick is complete (based on turn order size).
         if (currentTrick.isComplete(turnOrder.size())) {
             completeTrick();
@@ -546,7 +591,16 @@ public class BelotGame {
         // Award bonus points (usually 20 points) to the player's team.
         Team playerTeam = getPlayerTeam(player);
         if (playerTeam != null) {
-            playerTeam.addPoints(20);
+            if (playerTeam == teamA) {
+                teamAHandPoints += 20;
+                LOGGER.info("Added 20 bela points to Team A hand points, now: " + teamAHandPoints);
+            } else {
+                teamBHandPoints += 20;
+                LOGGER.info("Added 20 bela points to Team B hand points, now: " + teamBHandPoints);
+            }
+
+            LOGGER.info("Player " + player.getId() + " declared Bela for 20 points");
+
         }
 
         // Mark this player as having declared Bela.
@@ -554,28 +608,7 @@ public class BelotGame {
         return true;
     }
 
-    /**
-     * Called once a trick is complete.
-     * Determines the trick winner, awards trick points, and sets up a new trick.
-     */
-    private void completeTrick() {
-        String winnerPlayerId = currentTrick.determineWinner();
-        Player winner = findPlayerById(winnerPlayerId);
-        if (winner != null) {
-            // Award trick points to winner's team.
-            Team winningTeam = getPlayerTeam(winner);
-            if (winningTeam != null) {
-                winningTeam.addPoints(currentTrick.calculatePoints());
-            }
 
-            // Record the completed trick.
-            completedTricks.add(currentTrick);
-
-            // The winner leads the next trick.
-            currentLead = winner;
-            currentTrick = new Trick(winner.getId(), trump);
-        }
-    }
 
 
     /**
@@ -654,23 +687,7 @@ public class BelotGame {
     }
 
 
-    private void finalizeRound() {
 
-        String lastTrickWinnerId = completedTricks.getLast().determineWinner();
-        Player lastTrickWinner = turnOrder.stream()
-                .filter(p -> p.getId().equals(lastTrickWinnerId))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("Last trick winner not found"));
-
-        if (teamA.getPlayers().contains(lastTrickWinner)) {
-            teamA.addPoints(10); // Last trick bonus
-        } else {
-            teamB.addPoints(10); // Last trick bonus
-        }
-
-        // Game is over
-        gameState = GameState.COMPLETED;
-    }
 
     /**
      * @return Team A's score
@@ -703,29 +720,187 @@ public class BelotGame {
         }
     }
 
+    /**
+     * Apply the "padanje" rule and update the total scores.
+     * This should be called after all tricks have been played and before moving to the next hand.
+     */
+    private void applyPadanjeAndUpdateScores() {
+        // No padanje if no one called trump
+        if (trumpCaller == null) {
+            // Just add hand points to total score
+            teamA.addPoints(teamAHandPoints);
+            teamB.addPoints(teamBHandPoints);
+            return;
+        }
 
+        // Determine which team called trump
+        Team trumpCallerTeam = null;
+        Team opposingTeam = null;
+
+        if (teamA.getPlayers().contains(trumpCaller)) {
+            trumpCallerTeam = teamA;
+            opposingTeam = teamB;
+        } else {
+            trumpCallerTeam = teamB;
+            opposingTeam = teamA;
+        }
+
+        // Get hand points for each team
+        int trumpCallerHandPoints = (trumpCallerTeam == teamA) ? teamAHandPoints : teamBHandPoints;
+        int opposingTeamHandPoints = (opposingTeam == teamA) ? teamAHandPoints : teamBHandPoints;
+
+        LOGGER.info("Hand complete. Trump caller team: {} points, Opposing team: {} points",
+                trumpCallerHandPoints, opposingTeamHandPoints);
+
+        // Check if the trump caller team "falls"
+        if (trumpCallerHandPoints <= opposingTeamHandPoints) {
+            LOGGER.info("Trump caller team falls! Their points are transferred to the opposing team.");
+
+            if (trumpCallerTeam == teamA) {
+                // Team A falls, add their points to Team B
+                teamB.addPoints(teamAHandPoints + teamBHandPoints);
+            } else {
+                // Team B falls, add their points to Team A
+                teamA.addPoints(teamAHandPoints + teamBHandPoints);
+            }
+        } else {
+            // No falling, add hand points normally
+            teamA.addPoints(teamAHandPoints);
+            teamB.addPoints(teamBHandPoints);
+        }
+
+        // Reset hand points for the next hand
+        teamAHandPoints = 0;
+        teamBHandPoints = 0;
+
+        LOGGER.info("After applying padanje rule - Team A total: {}, Team B total: {}",
+                teamA.getScore(), teamB.getScore());
+    }
+
+    /**
+     * Completes the current trick, determines the winner, and sets up the next trick.
+     */
+    private void completeTrick() {
+        String winnerPlayerId = currentTrick.determineWinner();
+        Player winner = findPlayerById(winnerPlayerId);
+        if (winner != null) {
+            // Award trick points to winner's team for the current hand
+            Team winningTeam = getPlayerTeam(winner);
+            int trickPoints = currentTrick.calculatePoints();
+
+            // Add more detailed logging
+            LOGGER.info("Trick completed. Winner ID: {}, Points: {}",
+                    winner.getId(), trickPoints);
+
+            // Record the completed trick
+            completedTricks.add(currentTrick);
+
+            // Check if this is the last trick (but don't apply padanje yet)
+            boolean isLastTrick = completedTricks.size() == 8;
+
+            if (isLastTrick) {
+                // Add last trick bonus (10 points)
+                trickPoints += 10;
+                LOGGER.info("Last trick bonus (10 points) awarded to {}",
+                        winningTeam == teamA ? "Team A" : "Team B");
+            }
+
+            // Add points to the appropriate team
+            if (winningTeam == teamA) {
+                teamAHandPoints += trickPoints;
+                LOGGER.info("Team A now has {} hand points", teamAHandPoints);
+            } else if (winningTeam == teamB) {
+                teamBHandPoints += trickPoints;
+                LOGGER.info("Team B now has {} hand points", teamBHandPoints);
+            }
+
+            // If it was the last trick, apply padanje rule AFTER all points are counted
+            if (isLastTrick) {
+                LOGGER.info("Final hand points - Team A: {}, Team B: {}, Total: {}",
+                        teamAHandPoints, teamBHandPoints, (teamAHandPoints + teamBHandPoints));
+
+                // Apply padanje rule and update scores after all points are counted
+
+                LOGGER.info("Before applying padanje - Team A: {} hand points, {} total score, Team B: {} hand points, {} total score",
+                        teamAHandPoints, teamA.getScore(), teamBHandPoints, teamB.getScore());
+
+                applyPadanjeAndUpdateScores();
+
+                // Set game state to hand complete
+                trumpCaller = null;
+                trumpCalled = false;
+                trump = null;
+                gameState = GameState.HAND_COMPLETE;
+
+                return;
+            }
+
+            // The winner leads the next trick
+            currentLead = winner;
+            currentTrick = new Trick(winner.getId(), trump);
+        }
+    }
+    /**
+     * Processes the current trick, determines the winner, and sets up the next trick.
+     * This is a public interface to the private completeTrick functionality.
+     *
+     * @return The player who won the trick
+     */
+    public Player processTrick() {
+        String winnerPlayerId = currentTrick.determineWinner();
+        Player winner = findPlayerById(winnerPlayerId);
+
+        completeTrick();
+
+        return winner;
+    }
 
 
     /**
-     * @return The current player, or null if the game hasn't started or is over
+     * Checks if the hand is complete (all tricks played).
+     * @return True if hand is complete, false otherwise
      */
-    public Player getCurrentPlayer() {
-        if (gameState != GameState.PLAYING) {
-            return null;
-        }
+    public boolean checkHandComplete() {
+        // In Belot, each player gets 8 cards, so there are 8 tricks total
+        return completedTricks.size() == 8;
+    }
 
-        if (currentTrick.getPlays().isEmpty()) {
+
+    public Player getCurrentPlayer() {
+        if (gameState == GameState.BIDDING) {
             return currentLead;
         }
 
-        for (Player p : turnOrder) {
-            if (!currentTrick.getPlays().containsKey(p.getId())) {
-                return p;
+        if (gameState == GameState.PLAYING) {
+            if (currentTrick.getPlays().isEmpty()) {
+                return currentLead;
+            }
+
+            for (Player p : turnOrder) {
+                if (!currentTrick.getPlays().containsKey(p.getId())) {
+                    return p;
+                }
             }
         }
 
         return null;
     }
+
+    /**
+     * Adds points earned from a trick to the winning team's hand points
+     */
+    private void addTrickPoints(Player trickWinner, int points) {
+        if (teamA.getPlayers().contains(trickWinner)) {
+            teamAHandPoints += points;
+            LOGGER.debug("Team A earned {} points from trick, now has {} hand points",
+                    points, teamAHandPoints);
+        } else if (teamB.getPlayers().contains(trickWinner)) {
+            teamBHandPoints += points;
+            LOGGER.debug("Team B earned {} points from trick, now has {} hand points",
+                    points, teamBHandPoints);
+        }
+    }
+
 
     /**
      * @return The number of completed tricks
@@ -743,9 +918,6 @@ public class BelotGame {
         return currentTrick != null ? currentTrick.getPlays() : Collections.emptyMap();
     }
 
-    /**
-     * @return A list of cards that the current player can legally play
-     */
     public List<Card> getLegalMoves() {
         Player currentPlayer = getCurrentPlayer();
         if (currentPlayer == null) {
@@ -754,6 +926,7 @@ public class BelotGame {
 
         List<Card> hand = currentPlayer.getHand();
 
+        // First player can play anything
         if (currentTrick.getPlays().isEmpty()) {
             return new ArrayList<>(hand);
         }
@@ -761,27 +934,28 @@ public class BelotGame {
         Card leadCard = currentTrick.getLeadCard();
         Boja leadSuit = leadCard.getBoja();
 
+        // Check if player has cards of lead suit
         List<Card> leadSuitCards = hand.stream()
                 .filter(c -> c.getBoja() == leadSuit)
                 .toList();
 
+        // Must follow suit if possible
         if (!leadSuitCards.isEmpty()) {
             return leadSuitCards;
         }
 
-        boolean trumpInTrick = currentTrick.getPlays().values().stream()
-                .anyMatch(c -> c.getBoja() == trump);
+        // Player is cutting (can't follow suit)
+        // Check if they have trump cards
+        List<Card> trumpCards = hand.stream()
+                .filter(c -> c.getBoja() == trump)
+                .toList();
 
-        if (trumpInTrick) {
-            List<Card> trumpCards = hand.stream()
-                    .filter(c -> c.getBoja() == trump)
-                    .toList();
-
-            if (!trumpCards.isEmpty()) {
-                return trumpCards;
-            }
+        // If player has trump cards, they must play one
+        if (!trumpCards.isEmpty()) {
+            return trumpCards;
         }
 
+        // If player can't follow suit and has no trumps, they can play any card
         return new ArrayList<>(hand);
     }
 
@@ -797,6 +971,8 @@ public class BelotGame {
 
         return hasBela || sequencePoints.isPresent();
     }
+
+
 
     @Override
     public String toString() {
