@@ -1,5 +1,6 @@
 package backend.belatro.configs;
 
+import backend.belatro.pojo.gamelogic.BelotGame;
 import io.lettuce.core.resource.ClientResources;
 import io.lettuce.core.resource.DefaultClientResources;
 import org.slf4j.Logger;
@@ -106,4 +107,19 @@ public class RedisConfig {
         logger.debug("RedisTemplate created successfully");
         return template;
     }
+    @Bean
+    public RedisTemplate<String, BelotGame> belotGameRedisTemplate(
+            LettuceConnectionFactory factory) {
+
+        RedisTemplate<String, BelotGame> tpl = new RedisTemplate<>();
+        tpl.setConnectionFactory(factory);
+
+        // key = String, value = JSON
+        tpl.setKeySerializer(new StringRedisSerializer());
+        tpl.setValueSerializer(new GenericJackson2JsonRedisSerializer());
+
+        return tpl;
+    }
+
+
 }

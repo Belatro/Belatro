@@ -11,7 +11,7 @@ import java.util.Date;
 import java.util.List;
 
 @Data
-@Document(collation = "matches")
+@Document(collection = "match")
 public class Match {
     @Id
     private String id;

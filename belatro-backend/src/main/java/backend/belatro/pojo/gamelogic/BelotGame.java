@@ -501,7 +501,7 @@ public class BelotGame {
     /**
      * Finds a player by their ID.
      */
-    private Player findPlayerById(String id) {
+    public  Player findPlayerById(String id) {
         return turnOrder.stream()
                 .filter(p -> p.getId().equals(id))
                 .findFirst()
