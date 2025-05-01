@@ -19,20 +19,13 @@ public class CustomUserDetailsService implements UserDetailsService {
             throws UsernameNotFoundException {
         User user = userRepo.findByUsername(username)
                 .orElseThrow(() ->
-                        new UsernameNotFoundException("No user " +
-                                "found with username: " + username)
+                        new UsernameNotFoundException("No user found: " + username)
                 );
         // Adapt your User entity to Spring’s UserDetails:
         return org.springframework.security.core.userdetails.User
                 .withUsername(user.getUsername())
-                .password(user.getPassword())
-                .authorities(user.getRoles().stream()
-                        .map(r -> r.getName())
-                        .toArray(String[]::new))
-                .accountExpired(false)
-                .accountLocked(false)
-                .credentialsExpired(false)
-                .disabled(false)
+                .password(user.getPasswordHashed())
+                .roles("USER")    // or whatever roles you need
                 .build();
     }
 }
