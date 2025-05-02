@@ -33,7 +33,7 @@ public class JwtTokenProvider {
                 .setSubject(subject)
                 .setIssuedAt(now)
                 .setExpiration(expiry)
-                .signWith(key, SignatureAlgorithm.HS512)
+                .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 

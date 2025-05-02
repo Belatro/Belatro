@@ -57,11 +57,8 @@ public class SecurityConfig {
             DaoAuthenticationProvider authenticationProvider   // ← injected here
     ) throws Exception {
         http
-                // 1) register your DAO auth provider
                 .authenticationProvider(authenticationProvider)
-                // 2) disable CSRF because you're stateless
                 .csrf(csrf -> csrf.disable())
-                // 3) open up your auth endpoints
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/api/auth/**",
@@ -70,11 +67,10 @@ public class SecurityConfig {
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
-                // 4) make it stateless
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
-                .httpBasic(Customizer.withDefaults());
+                .httpBasic(httpBasic -> httpBasic.disable());
 
         // 5) plug in your JWT filter
         http.addFilterBefore(

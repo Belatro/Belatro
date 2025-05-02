@@ -27,6 +27,7 @@ public class UserService {
     public Optional<User> findById(String id) {
         return userRepo.findById(id);
     }
+
     public User createUser(User user) {
         user.setId(null);
         user.setEloRating(1200);
