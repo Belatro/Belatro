@@ -17,9 +17,11 @@ import backend.belatro.services.LobbyService;
 import backend.belatro.util.MatchMapper;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -170,6 +172,11 @@ public class LobbyServiceImpl implements LobbyService {
     public MatchDTO startMatch(String lobbyId) {
         Lobbies lobby = lobbyRepo.findById(lobbyId)
                 .orElseThrow(() -> new RuntimeException("Lobby not found"));
+        if (lobby.getStatus() == lobbyStatus.CLOSED) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Cannot start: lobby is already closed");
+        }
+
         int totalPlayers = lobby.getTeamAPlayers().size() + lobby.getTeamBPlayers().size();
         if (totalPlayers < 4) {
             throw new RuntimeException("Cannot start match: there must be at least 4 players across both teams");

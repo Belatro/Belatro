@@ -2,6 +2,7 @@ package backend.belatro.util;
 
 import io.github.cdimascio.dotenv.Dotenv;
 
+
 public class DotenvInitializer {
 
     public static void init() {

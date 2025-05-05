@@ -3,6 +3,7 @@ package backend.belatro.pojo.gamelogic;
 import backend.belatro.pojo.gamelogic.enums.Boja;
 import backend.belatro.pojo.gamelogic.enums.GameState;
 import backend.belatro.pojo.gamelogic.enums.Rank;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -917,7 +918,7 @@ public class BelotGame {
     public Map<String, Card> getCurrentTrickPlays() {
         return currentTrick != null ? currentTrick.getPlays() : Collections.emptyMap();
     }
-
+    @JsonIgnore
     public List<Card> getLegalMoves() {
         Player currentPlayer = getCurrentPlayer();
         if (currentPlayer == null) {
