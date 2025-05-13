@@ -2,6 +2,7 @@ package backend.belatro.controllers;
 
 import backend.belatro.dtos.BidMsg;
 import backend.belatro.dtos.PlayCardMsg;
+import backend.belatro.enums.MoveType;
 import backend.belatro.pojo.gamelogic.BelotGame;
 import backend.belatro.pojo.gamelogic.Bid;
 import backend.belatro.pojo.gamelogic.Player;
@@ -40,7 +41,7 @@ public class GameSocketController {
 
         matchService.recordMove(
                 id,
-                "PLAY_CARD",
+                MoveType.valueOf("PLAY_CARD"),
                 Map.of("playerId",    msg.playerId(),
                         "card",        msg.card().toString(),
                         "declareBela", msg.declareBela()),
@@ -61,7 +62,7 @@ public class GameSocketController {
 
         matchService.recordMove(
                 id,
-                "BID",
+                MoveType.valueOf("BID"),
                 Map.of("playerId", msg.playerId(),
                         "pass",     msg.pass(),
                         "trump",    msg.trump()),

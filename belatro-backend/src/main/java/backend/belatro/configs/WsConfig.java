@@ -16,29 +16,29 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 public class WsConfig implements WebSocketMessageBrokerConfigurer {
 
 
-    private final TaskScheduler brokerTaskScheduler;
-
     @Autowired
     public WsConfig(TaskScheduler brokerTaskScheduler) {
 
-        this.brokerTaskScheduler = brokerTaskScheduler;
     }
 
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry r) {
-        // Browser opens WebSocket to http://…/ws
         r.addEndpoint("/ws").setAllowedOriginPatterns("*").withSockJS();
     }
 
     @Override
-    public void configureMessageBroker(MessageBrokerRegistry b) {
-        b.setApplicationDestinationPrefixes("/app"); // client → server
-        b.enableSimpleBroker("/topic")
-                .setTaskScheduler(brokerTaskScheduler)
-                .setHeartbeatValue(new long[] {10000, 10000})
-                .enableDistributedBroker();
+    public void configureMessageBroker(MessageBrokerRegistry registry) {
+
+        registry.setApplicationDestinationPrefixes("/app");
+
+        // Outbound (server → client)
+        registry.enableSimpleBroker("/topic")
+                .setTaskScheduler(brokerTaskScheduler())          // heart-beats
+                .setHeartbeatValue(new long[] {10_000, 10_000})   // ms
+                ;
     }
+
     @Bean
     public TaskScheduler brokerTaskScheduler() {
         ThreadPoolTaskScheduler ts = new ThreadPoolTaskScheduler();

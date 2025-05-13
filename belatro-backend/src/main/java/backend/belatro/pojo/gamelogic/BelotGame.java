@@ -4,11 +4,15 @@ import backend.belatro.pojo.gamelogic.enums.Boja;
 import backend.belatro.pojo.gamelogic.enums.GameState;
 import backend.belatro.pojo.gamelogic.enums.Rank;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+@AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 
 /**
  * Represents a Belot card game.
