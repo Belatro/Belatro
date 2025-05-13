@@ -4,20 +4,25 @@ import backend.belatro.dtos.JoinLobbyRequestDTO;
 import backend.belatro.dtos.LobbyDTO;
 import backend.belatro.dtos.MatchDTO;
 import backend.belatro.dtos.TeamSwitchRequestDTO;
-import backend.belatro.enums.lobbyStatus;
-import backend.belatro.dtos.UserUpdateDTO;
 import backend.belatro.enums.GameMode;
+import backend.belatro.enums.lobbyStatus;
 import backend.belatro.models.Lobbies;
 import backend.belatro.models.User;
+import backend.belatro.pojo.gamelogic.BelotGame;
 import backend.belatro.repos.LobbiesRepo;
 import backend.belatro.repos.UserRepo;
+import backend.belatro.services.BelotGameService;
 import backend.belatro.services.IMatchService;
 import backend.belatro.services.LobbyService;
+import backend.belatro.util.MatchMapper;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -30,12 +35,14 @@ public class LobbyServiceImpl implements LobbyService {
     private final UserRepo userRepo;
     private final IMatchService matchService;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+    private final BelotGameService belotService;
 
     @Autowired
-    public LobbyServiceImpl(LobbiesRepo lobbyRepo, UserRepo userRepo, IMatchService matchService) {
+    public LobbyServiceImpl(LobbiesRepo lobbyRepo, UserRepo userRepo, IMatchService matchService, BelotGameService belotService) {
         this.lobbyRepo = lobbyRepo;
         this.userRepo = userRepo;
         this.matchService = matchService;
+        this.belotService = belotService;
     }
 
     @Override
@@ -165,6 +172,11 @@ public class LobbyServiceImpl implements LobbyService {
     public MatchDTO startMatch(String lobbyId) {
         Lobbies lobby = lobbyRepo.findById(lobbyId)
                 .orElseThrow(() -> new RuntimeException("Lobby not found"));
+        if (lobby.getStatus() == lobbyStatus.CLOSED) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Cannot start: lobby is already closed");
+        }
+
         int totalPlayers = lobby.getTeamAPlayers().size() + lobby.getTeamBPlayers().size();
         if (totalPlayers < 4) {
             throw new RuntimeException("Cannot start match: there must be at least 4 players across both teams");
@@ -188,9 +200,13 @@ public class LobbyServiceImpl implements LobbyService {
             matchDTO.setGameMode(GameMode.CASUAL);
         }
         matchDTO.setStartTime(new Date());
-        matchDTO.setMoves(null);
         matchDTO.setResult(null);
-        return matchService.createMatch(matchDTO);
+        MatchDTO persisted = matchService.createMatch(matchDTO);
+
+        BelotGame game = MatchMapper.toBelotGame(persisted);
+        belotService.save(game);
+
+        return persisted;
     }
 
     private LobbyDTO.UserSimpleDTO convertUserToUserSimple(User user) {
