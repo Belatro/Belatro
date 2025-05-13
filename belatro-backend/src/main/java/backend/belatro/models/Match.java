@@ -1,7 +1,6 @@
 package backend.belatro.models;
 
 import backend.belatro.enums.GameMode;
-import backend.belatro.pojo.Move;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.DBRef;
@@ -22,7 +21,6 @@ public class Match {
     @DBRef
     private Lobbies originLobby;
     private GameMode gameMode;
-    private List<Move> moves;
     private String result;
     private Date startTime;
     private Date endTime;

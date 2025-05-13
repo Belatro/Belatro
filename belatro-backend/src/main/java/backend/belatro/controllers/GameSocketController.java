@@ -6,21 +6,26 @@ import backend.belatro.pojo.gamelogic.BelotGame;
 import backend.belatro.pojo.gamelogic.Bid;
 import backend.belatro.pojo.gamelogic.Player;
 import backend.belatro.services.BelotGameService;
+import backend.belatro.services.IMatchService;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
+
+import java.util.Map;
 
 @Controller
 public class GameSocketController {
 
     private final BelotGameService svc;
     private final SimpMessagingTemplate bus;
+    private final IMatchService matchService;
 
     public GameSocketController(BelotGameService svc,
-                                SimpMessagingTemplate bus) {
+                                SimpMessagingTemplate bus, IMatchService matchService) {
         this.svc = svc;
         this.bus = bus;
+        this.matchService = matchService;
     }
 
     @MessageMapping("/games/{id}/play")
@@ -33,20 +38,36 @@ public class GameSocketController {
                 msg.card(),
                 msg.declareBela());
 
+        matchService.recordMove(
+                id,
+                "PLAY_CARD",
+                Map.of("playerId",    msg.playerId(),
+                        "card",        msg.card().toString(),
+                        "declareBela", msg.declareBela()),
+                /* evaluation */ 0.0);
+
         bus.convertAndSend("/topic/games/" + id, updated);
     }
-    @MessageMapping("/games/{id}/bid")
-    public void bid(@DestinationVariable String id, BidMsg msg) {
 
-        // 1) Build a domain Bid object
+    @MessageMapping("/games/{id}/bid")
+    public void bid(@DestinationVariable String id,
+                    BidMsg msg) {
+
         Bid bid = msg.pass()
-                ? Bid.pass(new Player(msg.playerId()))             // static helper
+                ? Bid.pass(new Player(msg.playerId()))
                 : Bid.callTrump(new Player(msg.playerId()), msg.trump());
 
-        // 2) Apply it through the service (loads, mutates, saves)
-        BelotGame g = svc.placeBid(id, bid);
+        BelotGame updated = svc.placeBid(id, bid);
 
-        // 3) Broadcast the updated game state to all subscribers
-        bus.convertAndSend("/topic/games/" + id, g);
+        matchService.recordMove(
+                id,
+                "BID",
+                Map.of("playerId", msg.playerId(),
+                        "pass",     msg.pass(),
+                        "trump",    msg.trump()),
+                /* evaluation */ 0.0);
+
+        bus.convertAndSend("/topic/games/" + id, updated);
     }
+
 }

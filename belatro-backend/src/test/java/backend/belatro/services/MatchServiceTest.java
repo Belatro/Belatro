@@ -60,7 +60,6 @@ class MatchServiceImplTest {
         testMatch.setTeamA(Arrays.asList(testUser1));
         testMatch.setTeamB(Arrays.asList(testUser2));
         testMatch.setOriginLobby(testLobby);
-        testMatch.setMoves(new ArrayList<>());
         testMatch.setResult("Team A wins");
 
         // Setup test match DTO
@@ -88,7 +87,6 @@ class MatchServiceImplTest {
         lobbyDTO.setName("Test Lobby");
         testMatchDTO.setOriginLobby(lobbyDTO);
 
-        testMatchDTO.setMoves(new ArrayList<>());
         testMatchDTO.setResult("Team A wins");
     }
 

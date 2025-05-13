@@ -200,7 +200,6 @@ public class LobbyServiceImpl implements LobbyService {
             matchDTO.setGameMode(GameMode.CASUAL);
         }
         matchDTO.setStartTime(new Date());
-        matchDTO.setMoves(null);
         matchDTO.setResult(null);
         MatchDTO persisted = matchService.createMatch(matchDTO);
 
