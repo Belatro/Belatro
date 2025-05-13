@@ -2,11 +2,12 @@ package backend.belatro.pojo.gamelogic;
 
 import backend.belatro.pojo.gamelogic.enums.Boja;
 import backend.belatro.pojo.gamelogic.enums.Rank;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Deck {
     final List<Card> cards = new ArrayList<>();
 

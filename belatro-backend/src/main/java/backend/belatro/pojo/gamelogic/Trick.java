@@ -2,18 +2,18 @@ package backend.belatro.pojo.gamelogic;
 
 import backend.belatro.pojo.gamelogic.enums.Boja;
 import backend.belatro.pojo.gamelogic.enums.Rank;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Comparator;
+import java.util.*;
 
 /**
  * Represents a single trick in a Belot game.
  * A trick consists of one card played by each player, with the first card played by the lead player.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Trick {
     @Getter
     private final String leadPlayerId;
@@ -24,10 +24,12 @@ public class Trick {
     private final Map<String, Card> plays;
 
 
-    public Trick(String leadPlayerId, Boja trump) {
-        this.leadPlayerId = Objects.requireNonNull(leadPlayerId, "Lead player ID cannot be null");
-        this.trump = trump;
-        this.plays = new HashMap<>();
+    @JsonCreator
+    public Trick(@JsonProperty("leadPlayerId") String leadPlayerId,
+                 @JsonProperty("trump")        Boja   trump) {
+        this.leadPlayerId = Objects.requireNonNull(leadPlayerId);
+        this.trump        = trump;
+        this.plays        = new HashMap<>();
     }
 
     /**

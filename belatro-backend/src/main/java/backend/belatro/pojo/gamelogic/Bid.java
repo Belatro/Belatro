@@ -1,11 +1,15 @@
 package backend.belatro.pojo.gamelogic;
 
 import backend.belatro.pojo.gamelogic.enums.Boja;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 /**
  * Represents a bid in the Belot card game.
  */
+@NoArgsConstructor(force = true)
 @Getter
 public class Bid {
     public enum BidAction {
@@ -30,15 +34,17 @@ public class Bid {
     public static Bid callTrump(Player player, Boja selectedTrump) {
         return new Bid(player, BidAction.CALL_TRUMP, selectedTrump);
     }
-    
-    private Bid(Player player, BidAction action, Boja selectedTrump) {
-        this.player = player;
-        this.action = action;
-        this.selectedTrump = selectedTrump;
-        
+
+    @JsonCreator
+    public Bid(@JsonProperty("player")       Player   player,
+               @JsonProperty("action")       BidAction action,
+               @JsonProperty("selectedTrump")Boja     selectedTrump) {
         if (action == BidAction.CALL_TRUMP && selectedTrump == null) {
-            throw new IllegalArgumentException("Must provide a trump suit when calling trump");
+            throw new IllegalArgumentException("Must supply trump when calling it");
         }
+        this.player        = player;
+        this.action        = action;
+        this.selectedTrump = selectedTrump;
     }
 
     public boolean isPass() {

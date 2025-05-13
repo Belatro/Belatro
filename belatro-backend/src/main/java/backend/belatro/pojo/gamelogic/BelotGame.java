@@ -3,15 +3,15 @@ package backend.belatro.pojo.gamelogic;
 import backend.belatro.pojo.gamelogic.enums.Boja;
 import backend.belatro.pojo.gamelogic.enums.GameState;
 import backend.belatro.pojo.gamelogic.enums.Rank;
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import lombok.AllArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
-@AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 
 /**
@@ -63,6 +63,7 @@ public class BelotGame {
     @Getter
     private Player trumpCaller;
 
+    @Getter
     private final List<Bid> bids = new ArrayList<>();
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BelotGame.class);
@@ -74,8 +75,14 @@ public class BelotGame {
 
 
 
-
-    public BelotGame(String gameId, Team teamA, Team teamB) {
+    @JsonCreator
+    public BelotGame(
+            @JsonProperty("gameId")
+            String gameId,
+            @JsonProperty("teamA")
+            Team teamA,
+            @JsonProperty("teamB")
+            Team teamB) {
         this.gameId = Objects.requireNonNull(gameId, "Game ID cannot be null");
         this.teamA = Objects.requireNonNull(teamA, "Team A cannot be null");
         this.teamB = Objects.requireNonNull(teamB, "Team B cannot be null");
@@ -919,6 +926,7 @@ public class BelotGame {
     /**
      * @return A map of player IDs to cards played in the current trick
      */
+    @JsonIgnore
     public Map<String, Card> getCurrentTrickPlays() {
         return currentTrick != null ? currentTrick.getPlays() : Collections.emptyMap();
     }

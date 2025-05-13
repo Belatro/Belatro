@@ -2,9 +2,12 @@ package backend.belatro.controllers;
 
 import backend.belatro.dtos.BidMsg;
 import backend.belatro.dtos.PlayCardMsg;
+import backend.belatro.dtos.PrivateGameView;
+import backend.belatro.dtos.PublicGameView;
 import backend.belatro.enums.MoveType;
 import backend.belatro.pojo.gamelogic.BelotGame;
 import backend.belatro.pojo.gamelogic.Bid;
+import backend.belatro.pojo.gamelogic.Card;
 import backend.belatro.pojo.gamelogic.Player;
 import backend.belatro.services.BelotGameService;
 import backend.belatro.services.IMatchService;
@@ -14,6 +17,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
 import java.util.Map;
+import java.util.stream.Stream;
 
 @Controller
 public class GameSocketController {
@@ -30,45 +34,55 @@ public class GameSocketController {
     }
 
     @MessageMapping("/games/{id}/play")
-    public void play(@DestinationVariable String id,
-                     PlayCardMsg msg) {
+    public void play(@DestinationVariable String id, PlayCardMsg msg) {
 
-        BelotGame updated = svc.playCard(
-                id,
-                msg.playerId(),
-                msg.card(),
-                msg.declareBela());
+        BelotGame game = svc.playCard(id, msg.playerId(), msg.card(), msg.declareBela());
 
-        matchService.recordMove(
-                id,
-                MoveType.valueOf("PLAY_CARD"),
-                Map.of("playerId",    msg.playerId(),
-                        "card",        msg.card().toString(),
+        matchService.recordMove(id,
+                MoveType.PLAY_CARD,
+                Map.of("playerId", msg.playerId(),
+                        "card",     cardToString(msg.card()),
                         "declareBela", msg.declareBela()),
-                /* evaluation */ 0.0);
+                0.0);
 
-        bus.convertAndSend("/topic/games/" + id, updated);
+        fanOut(id, game);
     }
 
     @MessageMapping("/games/{id}/bid")
-    public void bid(@DestinationVariable String id,
-                    BidMsg msg) {
+    public void bid(@DestinationVariable String id, BidMsg msg) {
 
         Bid bid = msg.pass()
                 ? Bid.pass(new Player(msg.playerId()))
                 : Bid.callTrump(new Player(msg.playerId()), msg.trump());
 
-        BelotGame updated = svc.placeBid(id, bid);
+        BelotGame game = svc.placeBid(id, bid);
 
-        matchService.recordMove(
-                id,
-                MoveType.valueOf("BID"),
+        matchService.recordMove(id,
+                MoveType.BID,
                 Map.of("playerId", msg.playerId(),
                         "pass",     msg.pass(),
                         "trump",    msg.trump()),
-                /* evaluation */ 0.0);
+                0.0);
 
-        bus.convertAndSend("/topic/games/" + id, updated);
+        fanOut(id, game);
+    }
+
+    private void fanOut(String gameId, BelotGame game) {
+        PublicGameView pub = svc.toPublicView(game);
+        bus.convertAndSend("/topic/games/" + gameId, pub);
+
+        Stream.concat(game.getTeamA().getPlayers().stream(),
+                        game.getTeamB().getPlayers().stream())
+                .forEach(pl -> {
+                    PrivateGameView prv = svc.toPrivateView(game, pl);
+                    bus.convertAndSendToUser(pl.getId(),
+                            "/queue/games/" + gameId,
+                            prv);
+                });
+    }
+
+    private static String cardToString(Card c) {
+        return c == null ? "" : c.toString();   // uses your override
     }
 
 }

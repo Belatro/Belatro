@@ -1,5 +1,7 @@
 package backend.belatro.services;
 
+import backend.belatro.dtos.PrivateGameView;
+import backend.belatro.dtos.PublicGameView;
 import backend.belatro.pojo.gamelogic.*;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -63,5 +65,22 @@ public class BelotGameService {
             throw new IllegalStateException("Game not found: " + gameId);
         }
         return g;
+    }
+
+    public PublicGameView toPublicView(BelotGame g) {
+        return new PublicGameView(
+                g.getGameId(),
+                g.getGameState(),
+                g.getBids(),
+                g.getCurrentTrick(),
+                g.getTeamAScore(),
+                g.getTeamBScore());
+    }
+
+    public PrivateGameView toPrivateView(BelotGame g, Player p) {
+        return new PrivateGameView(
+                toPublicView(g),
+                p.getHand(),
+                g.getCurrentPlayer().equals(p));
     }
 }

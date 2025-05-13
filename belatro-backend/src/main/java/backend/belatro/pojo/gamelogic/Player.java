@@ -1,5 +1,8 @@
 package backend.belatro.pojo.gamelogic;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -7,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Getter
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Player {
     private final String id;
     private final List<Card> hand = new ArrayList<>();
@@ -14,8 +18,8 @@ public class Player {
     private boolean bidPassed = false;
     private List<Bid> bidsHistory = new ArrayList<>();
 
-
-    public Player(String id) {
+    @JsonCreator
+    public Player(@JsonProperty("id") String id) {
         this.id = id;
     }
 
