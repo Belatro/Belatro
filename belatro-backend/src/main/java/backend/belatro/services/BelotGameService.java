@@ -1,10 +1,14 @@
 package backend.belatro.services;
 
+import backend.belatro.dtos.BidDTO;
 import backend.belatro.dtos.PrivateGameView;
 import backend.belatro.dtos.PublicGameView;
 import backend.belatro.pojo.gamelogic.*;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class BelotGameService {
@@ -68,13 +72,22 @@ public class BelotGameService {
     }
 
     public PublicGameView toPublicView(BelotGame g) {
+        List<BidDTO> dtos = g.getBids().stream()
+                .map(b -> new BidDTO(
+                        b.getPlayer().getId(),
+                        b.getAction().name(),
+                        b.getSelectedTrump()))
+                .toList();
+        List<BidDTO> safe = new ArrayList<>(dtos);
+
         return new PublicGameView(
                 g.getGameId(),
                 g.getGameState(),
-                g.getBids(),
+                safe,
                 g.getCurrentTrick(),
                 g.getTeamAScore(),
-                g.getTeamBScore());
+                g.getTeamBScore()
+        );
     }
 
     public PrivateGameView toPrivateView(BelotGame g, Player p) {

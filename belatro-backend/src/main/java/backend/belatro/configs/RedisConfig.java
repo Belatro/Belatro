@@ -99,7 +99,7 @@ public class RedisConfig {
         logger.debug("Initialized LettuceConnectionFactory");
         return connectionFactory;
     }
-    @Bean
+    @Bean(name = "redisObjectMapper")
     public ObjectMapper objectMapper() {
         return JsonMapper.builder()
                 .activateDefaultTyping(LaissezFaireSubTypeValidator.instance,

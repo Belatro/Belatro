@@ -57,12 +57,14 @@ public class GameSocketController {
 
         BelotGame game = svc.placeBid(id, bid);
 
-        matchService.recordMove(id,
-                MoveType.BID,
-                Map.of("playerId", msg.playerId(),
-                        "pass",     msg.pass(),
-                        "trump",    msg.trump()),
-                0.0);
+        Map<String,Object> payload = msg.pass()
+                ? Map.of("playerId", msg.playerId(),
+                "pass",     true)
+                : Map.of("playerId", msg.playerId(),
+                "pass",     false,
+                "trump",    msg.trump());
+
+        matchService.recordMove(id, MoveType.BID, payload, 0.0);
 
         fanOut(id, game);
     }

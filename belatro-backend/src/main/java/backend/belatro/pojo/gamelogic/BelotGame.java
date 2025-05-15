@@ -73,7 +73,8 @@ public class BelotGame {
 
     private final Map<String, Boolean> belaAlreadyDeclared = new HashMap<>();
 
-
+    private int teamATricksWon = 0;
+    private int teamBTricksWon = 0;
 
     @JsonCreator
     public BelotGame(
@@ -151,7 +152,7 @@ public class BelotGame {
         Player player = bid.getPlayer();
 
         // Check if it's this player's turn to bid
-        if (player != currentLead) {
+        if (!player.getId().equals(currentLead.getId())) {
             return false;
         }
 
@@ -268,6 +269,8 @@ public class BelotGame {
 
         // IMPORTANT: Initialize the currentPlayer field to be the same as the lead player
         currentPlayer = currentLead;
+        teamATricksWon = 0;
+        teamBTricksWon = 0;
 
         // Initialize the currentTrick with the trump suit
         // Note: The Trick constructor in your code takes leadPlayerId and trump,
@@ -796,6 +799,11 @@ public class BelotGame {
         String winnerPlayerId = currentTrick.determineWinner();
         Player winner = findPlayerById(winnerPlayerId);
         if (winner != null) {
+            if (teamA.getPlayers().contains(winner)) {
+                               teamATricksWon++;
+                           } else {
+                               teamBTricksWon++;
+                           }
             // Award trick points to winner's team for the current hand
             Team winningTeam = getPlayerTeam(winner);
             int trickPoints = currentTrick.calculatePoints();
@@ -837,7 +845,13 @@ public class BelotGame {
                         teamAHandPoints, teamA.getScore(), teamBHandPoints, teamB.getScore());
 
                 applyPadanjeAndUpdateScores();
-
+                if (teamATricksWon == 8) {
+                    teamAHandPoints += 90;
+                    LOGGER.info("Team A won all tricks! Capot bonus of 90 awarded.");
+                } else if (teamBTricksWon == 8) {
+                    teamBHandPoints += 90;
+                    LOGGER.info("Team B won all tricks! Capot bonus of 90 awarded.");
+                }
                 // Set game state to hand complete
                 trumpCaller = null;
                 trumpCalled = false;
@@ -939,36 +953,58 @@ public class BelotGame {
 
         List<Card> hand = currentPlayer.getHand();
 
-        // First player can play anything
+        // 1) If nobody has led yet, you can play anything
         if (currentTrick.getPlays().isEmpty()) {
             return new ArrayList<>(hand);
         }
 
+        // 2) There is a lead card — pull it and its suit
         Card leadCard = currentTrick.getLeadCard();
         Boja leadSuit = leadCard.getBoja();
 
-        // Check if player has cards of lead suit
+        // 3) If you have cards of the lead suit…
         List<Card> leadSuitCards = hand.stream()
                 .filter(c -> c.getBoja() == leadSuit)
                 .toList();
-
-        // Must follow suit if possible
         if (!leadSuitCards.isEmpty()) {
-            return leadSuitCards;
+            // 3a) Find the card you must beat
+            Card currentWinner = currentTrick.getWinningCard();
+            // 3b) Choose the right ordering (trump order if leadSuit is trump, else normal)
+            Comparator<Card> comparator = (leadSuit == trump)
+                    ? BelotRankComparator.getTrumpComparator()
+                    : BelotRankComparator.getNonTrumpComparator();
+            // 3c) Of your lead-suit cards, see which actually outrank the current winner
+            List<Card> overcards = leadSuitCards.stream()
+                    .filter(c -> comparator.compare(c, currentWinner) > 0)
+                    .toList();
+            // 3d) If you have any overcards, you must play one; otherwise you must still follow suit
+            return overcards.isEmpty() ? leadSuitCards : overcards;
         }
 
-        // Player is cutting (can't follow suit)
-        // Check if they have trump cards
+        // 4) You have no lead suit — if you have any trump cards, you must play one
         List<Card> trumpCards = hand.stream()
                 .filter(c -> c.getBoja() == trump)
                 .toList();
-
-        // If player has trump cards, they must play one
         if (!trumpCards.isEmpty()) {
+            // 4a) Check if someone already trumped; if so, find the highest trump in the trick
+            Optional<Card> highestTrumpInTrick = currentTrick.getPlays().values().stream()
+                    .filter(c -> c.getBoja() == trump)
+                    .max(BelotRankComparator.getTrumpComparator());
+            if (highestTrumpInTrick.isPresent()) {
+                Card highestTrump = highestTrumpInTrick.get();
+                // 4b) Of your trumps, see which outrank that
+                List<Card> overtrumps = trumpCards.stream()
+                        .filter(c -> BelotRankComparator.getTrumpComparator()
+                                .compare(c, highestTrump) > 0)
+                        .toList();
+                // 4c) If you have any overtrumps, you must play one; otherwise you must still trump
+                return overtrumps.isEmpty() ? trumpCards : overtrumps;
+            }
+            // 4d) No trump in the trick yet, but you have trumps → must play any trump
             return trumpCards;
         }
 
-        // If player can't follow suit and has no trumps, they can play any card
+        // 5) You can neither follow suit nor trump → play anything
         return new ArrayList<>(hand);
     }
 

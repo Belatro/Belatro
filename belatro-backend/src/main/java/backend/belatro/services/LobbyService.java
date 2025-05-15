@@ -5,6 +5,8 @@ import backend.belatro.dtos.LobbyDTO;
 import backend.belatro.dtos.MatchDTO;
 import backend.belatro.dtos.TeamSwitchRequestDTO;
 
+import java.util.List;
+
 public interface LobbyService {
     LobbyDTO createLobby(LobbyDTO lobbyDTO);
     LobbyDTO getLobby(String lobbyId);
@@ -13,4 +15,6 @@ public interface LobbyService {
     LobbyDTO joinLobby(JoinLobbyRequestDTO joinRequest);
     LobbyDTO switchTeam(TeamSwitchRequestDTO switchRequest);
     MatchDTO startMatch(String lobbyId);
+    List<LobbyDTO> getAllLobbies();
+
 }

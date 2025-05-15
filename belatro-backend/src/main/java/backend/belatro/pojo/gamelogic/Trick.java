@@ -192,6 +192,32 @@ public class Trick {
     }
 
     /**
+     * @return the Card that is currently winning this trick,
+     *         or null if no cards have been played yet.
+     */
+    public Card getWinningCard() {
+        if (plays.isEmpty()) {
+            return null;
+        }
+
+        Card winningCard = getLeadCard();
+        Boja leadSuit = winningCard.getBoja();
+
+        for (Card challenger : plays.values()) {
+            // skip comparing the lead against itself
+            if (challenger == winningCard) {
+                continue;
+            }
+            // if challenger beats what we thought was winning, adopt it
+            if (!isCardWinning(winningCard, challenger, leadSuit)) {
+                winningCard = challenger;
+            }
+        }
+
+        return winningCard;
+    }
+
+    /**
      * Returns the last card played in this trick.
      *
      * @return The last card played, or null if no cards have been played

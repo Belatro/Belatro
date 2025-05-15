@@ -46,6 +46,14 @@ public class LobbyServiceImpl implements LobbyService {
     }
 
     @Override
+    public List<LobbyDTO> getAllLobbies() {
+        return lobbyRepo.findAll().stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+
+    @Override
     public LobbyDTO createLobby(LobbyDTO lobbyDTO) {
         if (lobbyDTO.getHostUser() == null || lobbyDTO.getHostUser().getId() == null)
             throw new RuntimeException("Host user is required");

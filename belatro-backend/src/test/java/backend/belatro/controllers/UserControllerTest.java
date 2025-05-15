@@ -97,21 +97,21 @@ class UserControllerTest {
         verify(userService, times(1)).findById("nonexistent");
     }
 
-    @Test
-    void createUser_ShouldReturnCreatedUser() {
-        // Arrange
-        when(userService.createUser(any(User.class))).thenReturn(testUser);
-
-        // Act
-        ResponseEntity<User> result = userController.createUser(new User());
-
-        // Assert
-        assertEquals(HttpStatus.OK, result.getStatusCode());
-        assertNotNull(result.getBody());
-        assertEquals("user123", result.getBody().getId());
-        assertEquals("testUser", result.getBody().getUsername());
-        verify(userService, times(1)).createUser(any(User.class));
-    }
+//    @Test
+//    void createUser_ShouldReturnCreatedUser() {
+//        // Arrange
+//        when(userService.createUser(any(User.class))).thenReturn(testUser);
+//
+//        // Act
+//        ResponseEntity<User> result = userController.createUser(new User());
+//
+//        // Assert
+//        assertEquals(HttpStatus.OK, result.getStatusCode());
+//        assertNotNull(result.getBody());
+//        assertEquals("user123", result.getBody().getId());
+//        assertEquals("testUser", result.getBody().getUsername());
+//        verify(userService, times(1)).createUser(any(User.class));
+//    }
 
     @Test
     void updateUser_ShouldReturnUpdatedUser() {

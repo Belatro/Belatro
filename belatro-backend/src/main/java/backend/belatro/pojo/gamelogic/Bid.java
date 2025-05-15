@@ -2,21 +2,19 @@ package backend.belatro.pojo.gamelogic;
 
 import backend.belatro.pojo.gamelogic.enums.Boja;
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 
 /**
  * Represents a bid in the Belot card game.
  */
-@NoArgsConstructor(force = true)
 @Getter
-public class Bid {
+@JsonIgnoreProperties(ignoreUnknown = true)public class Bid {
     public enum BidAction {
         PASS,
         CALL_TRUMP
     }
-    
     private final Player player;
     private final BidAction action;
     private final Boja selectedTrump;

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Belot 4-Player Bot Cockpit</title>
+  <style>
+    body { font-family: sans-serif; display: flex; flex-wrap: wrap; gap: 1rem; }
+    .player { border: 1px solid #ccc; padding: 0.5rem; width: 23%; }
+    .player h2 { margin: 0 0 .5rem; font-size: 1.1rem; }
+    .section { margin-bottom: .5rem; }
+    .cards button, .bids button { margin: 0 .2rem .2rem 0; }
+    pre { background:#f5f5f5; padding:.5rem; max-height:4em; overflow:auto; }
+  </style>
+</head>
+<body>
+
+<!-- Control bar -->
+<div style="width:100%; margin-bottom:1rem;">
+  Game ID: <input id="gameId" value="PUT_YOUR_GAME_ID_HERE" style="width:200px">
+  <button id="connect">Connect All 4</button>
+</div>
+
+<!-- Four player panels -->
+<div class="player" id="Alice"><h2>Alice</h2>
+  <div class="section"><strong>Public:</strong><pre class="pub"></pre></div>
+  <div class="section"><strong>Hand:</strong><div class="cards"></div></div>
+  <div class="section"><strong>Bid:</strong><div class="bids"></div></div>
+</div>
+<div class="player" id="Bob"><h2>Bob</h2>
+  <div class="section"><strong>Public:</strong><pre class="pub"></pre></div>
+  <div class="section"><strong>Hand:</strong><div class="cards"></div></div>
+  <div class="section"><strong>Bid:</strong><div class="bids"></div></div>
+</div>
+<div class="player" id="Carol"><h2>Carol</h2>
+  <div class="section"><strong>Public:</strong><pre class="pub"></pre></div>
+  <div class="section"><strong>Hand:</strong><div class="cards"></div></div>
+  <div class="section"><strong>Bid:</strong><div class="bids"></div></div>
+</div>
+<div class="player" id="Dave"><h2>Dave</h2>
+  <div class="section"><strong>Public:</strong><pre class="pub"></pre></div>
+  <div class="section"><strong>Hand:</strong><div class="cards"></div></div>
+  <div class="section"><strong>Bid:</strong><div class="bids"></div></div>
+</div>
+
+<!-- dependencies -->
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/stompjs/lib/stomp.min.js"></script>
+<script>
+  const PLAYERS = ['Alice','Bob','Carol','Dave'];
+  const TRUMP = 'HERC'; // hard-coded for example
+
+  document.getElementById('connect').onclick = () => {
+    const gameId = document.getElementById('gameId').value.trim();
+    if (!gameId) return alert('Enter game ID');
+
+    PLAYERS.forEach(name => {
+      const panel = document.getElementById(name);
+      const pubEl = panel.querySelector('.pub');
+      const handEl = panel.querySelector('.cards');
+      const bidEl = panel.querySelector('.bids');
+
+      // clear UI
+      pubEl.textContent = '';
+      handEl.innerHTML = '';
+      bidEl.innerHTML = '';
+
+      // stomp client
+      const client = Stomp.over(() => new SockJS(`http://localhost:8080/ws?user=${name}`));
+      client.debug = false;
+      client.connect({ login: name }, () => {
+        // subscribe public
+        client.subscribe(`/topic/games/${gameId}`, msg => {
+          const view = JSON.parse(msg.body);
+          pubEl.textContent = JSON.stringify(view, null,2);
+        });
+        // subscribe private
+        client.subscribe(`/user/queue/games/${gameId}`, msg => {
+          const pv = JSON.parse(msg.body);
+          // render hand buttons
+          handEl.innerHTML = '';
+          pv.hand.forEach(card => {
+            const b = document.createElement('button');
+            b.textContent = card;
+            b.onclick = () => {
+              client.send(`/app/games/${gameId}/play`,
+                      {},
+                      JSON.stringify({ playerId: name, card, declareBela: false })
+              );
+            };
+            handEl.appendChild(b);
+          });
+        });
+        // render bid buttons
+        ['pass','call'].forEach(type => {
+          const b = document.createElement('button');
+          b.textContent = type==='pass'? 'Pass' : `Call ${TRUMP}`;
+          b.onclick = () => {
+            client.send(`/app/games/${gameId}/bid`, {},
+                    JSON.stringify({
+                      playerId: name,
+                      pass: type==='pass',
+                      trump: TRUMP
+                    })
+            );
+          };
+          bidEl.appendChild(b);
+        });
+      }, e => {
+        panel.querySelector('.pub').textContent = 'Connection error';
+        console.error(name, e);
+      });
+    });
+  };
+</script>
+</body>
+</html>
