@@ -8,13 +8,13 @@ import backend.belatro.enums.GameMode;
 import backend.belatro.enums.lobbyStatus;
 import backend.belatro.models.Lobbies;
 import backend.belatro.models.User;
-import backend.belatro.pojo.gamelogic.BelotGame;
+import backend.belatro.pojo.gamelogic.Player;
+import backend.belatro.pojo.gamelogic.Team;
 import backend.belatro.repos.LobbiesRepo;
 import backend.belatro.repos.UserRepo;
 import backend.belatro.services.BelotGameService;
 import backend.belatro.services.IMatchService;
 import backend.belatro.services.LobbyService;
-import backend.belatro.util.MatchMapper;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -185,37 +185,49 @@ public class LobbyServiceImpl implements LobbyService {
                     HttpStatus.BAD_REQUEST, "Cannot start: lobby is already closed");
         }
 
-        int totalPlayers = lobby.getTeamAPlayers().size() + lobby.getTeamBPlayers().size();
-        if (totalPlayers < 4) {
-            throw new RuntimeException("Cannot start match: there must be at least 4 players across both teams");
+        if (lobby.getTeamAPlayers().size() != 2 || lobby.getTeamBPlayers().size() != 2) {
+            throw new RuntimeException("Cannot start match: each team must have exactly 2 players.");
         }
+        if (!lobby.getUnassignedPlayers().isEmpty()) {
+            throw new RuntimeException("Cannot start match: there are still unassigned players.");
+        }
+
         lobby.setStatus(lobbyStatus.CLOSED);
         lobby = lobbyRepo.save(lobby);
-        List<LobbyDTO.UserSimpleDTO> teamA = lobby.getTeamAPlayers().stream()
-                .map(this::convertUserToUserSimple)
-                .collect(Collectors.toList());
-        List<LobbyDTO.UserSimpleDTO> teamB = lobby.getTeamBPlayers().stream()
-                .map(this::convertUserToUserSimple)
-                .collect(Collectors.toList());
+
         MatchDTO matchDTO = new MatchDTO();
-        matchDTO.setTeamA(teamA);
-        matchDTO.setTeamB(teamB);
-        LobbyDTO originLobby = mapToDTO(lobby);
-        matchDTO.setOriginLobby(originLobby);
-        if ("RANKED".equalsIgnoreCase(lobby.getGameMode())) {
-            matchDTO.setGameMode(GameMode.RANKED);
-        } else {
-            matchDTO.setGameMode(GameMode.CASUAL);
-        }
+        matchDTO.setOriginLobby(mapToDTO(lobby));
+        matchDTO.setTeamA(lobby.getTeamAPlayers().stream().map(this::convertUserToUserSimple).collect(Collectors.toList()));
+        matchDTO.setTeamB(lobby.getTeamBPlayers().stream().map(this::convertUserToUserSimple).collect(Collectors.toList()));
+        matchDTO.setGameMode("CASUAL".equalsIgnoreCase(lobby.getGameMode()) ? GameMode.CASUAL : GameMode.RANKED);
         matchDTO.setStartTime(new Date());
         matchDTO.setResult(null);
-        MatchDTO persisted = matchService.createMatch(matchDTO);
 
-        BelotGame game = MatchMapper.toBelotGame(persisted);
-        belotService.save(game);
+        MatchDTO persistedMatch = matchService.createMatch(matchDTO);
+        String gameId = persistedMatch.getId();
 
-        return persisted;
+        List<Player> gameTeamAPlayers = new ArrayList<>();
+        for (User userA : lobby.getTeamAPlayers()) {
+            gameTeamAPlayers.add(new Player(userA.getUsername())); // Username as Player ID
+        }
+        Team gameTeamA = new Team(gameTeamAPlayers);
+
+        // Prepare players for Team B
+        List<Player> gameTeamBPlayers = new ArrayList<>();
+        for (User userB : lobby.getTeamBPlayers()) {
+            gameTeamBPlayers.add(new Player(userB.getUsername())); // Username as Player ID
+        }
+        Team gameTeamB = new Team(gameTeamBPlayers);
+
+
+        // This will now internally publish an event after starting and saving the game.
+        // The GameSocketController will listen for this event.
+        belotService.start(gameId, gameTeamA, gameTeamB);
+
+
+        return persistedMatch;
     }
+
 
     private LobbyDTO.UserSimpleDTO convertUserToUserSimple(User user) {
         LobbyDTO.UserSimpleDTO dto = new LobbyDTO.UserSimpleDTO();

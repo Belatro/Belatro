@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Belot 4-Player Cockpit</title>
+    <style>
+        body { font-family: sans-serif; margin: 1rem; }
+        section { margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px dashed #eee; }
+        section:last-of-type { border-bottom: none; }
+        input { padding: .3rem; margin-right: .5rem; }
+        button { padding: .3rem .6rem; margin-right: .5rem; }
+        label { margin-right: .5rem;}
+        .players { display: flex; flex-wrap: wrap; gap: 1rem; }
+        .player {
+            border: 1px solid #ccc;
+            padding: .5rem;
+            width: 23%; /* Adjust for better wrapping if needed */
+            min-width: 250px; /* Ensure player panels don't get too squished */
+            box-sizing: border-box;
+        }
+        .player h2 { margin-top: 0; }
+        .section { margin: .5rem 0; }
+        .cards button, .bids button { margin: .2rem; }
+        pre { background: #f5f5f5; padding: .5rem; max-height: 10em; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+    </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<section>
+    <h2>1. Login</h2>
+    <input id="username" placeholder="Username" value="Alice"> <!-- Default for testing -->
+    <input id="password" type="password" placeholder="Password" value="password"> <!-- Default for testing -->
+    <button id="loginBtn">Log In</button>
+    <span id="loginStatus"></span>
+    <div id="currentUserInfo" style="margin-top: 0.5em;"></div> <!-- ADDED for user info display -->
+</section>
+
+<!-- CREATE LOBBY (NEW SECTION) -->
+<section>
+    <h2>2. Create Lobby</h2>
+    <input id="lobbyNameInput" placeholder="Lobby Name" value="My Belot Lobby">
+    <br><br>
+    <label><input type="checkbox" id="privateLobbyCheckbox"> Private Lobby</label>
+    <input id="lobbyPasswordInput" type="password" placeholder="Lobby Password" style="display:none;">
+    <br><br>
+    <button id="createLobbyBtn">Create Lobby</button>
+    <span id="createLobbyStatus"></span>
+</section>
+<!-- LOBBY DETAILS & TEAM MANAGEMENT -->
+<section>
+    <h2>Lobby Details & Team Management</h2>
+    <p>Current Lobby ID: <strong id="manageLobbyIdDisplay"></strong></p>
+    <button id="refreshLobbyBtn">Refresh Lobby Details</button>
+    <div id="lobbyManagementStatus" style="margin-top: 0.5em;"></div>
+
+    <div style="display: flex; justify-content: space-around; margin-top: 1em;">
+        <div id="teamADisplay" style="border: 1px solid lightblue; padding: 1em; width: 30%;">
+            <h3>Team A</h3>
+            <ul id="teamAList"></ul>
+        </div>
+        <div id="teamBDisplay" style="border: 1px solid lightcoral; padding: 1em; width: 30%;">
+            <h3>Team B</h3>
+            <ul id="teamBList"></ul>
+        </div>
+        <div id="unassignedPlayersDisplay" style="border: 1px solid lightgray; padding: 1em; width: 30%;">
+            <h3>Unassigned Players</h3>
+            <ul id="unassignedPlayersList"></ul>
+        </div>
+    </div>
+</section>
+
+
+<!-- MATCH CREATION (Existing - renamed to "Create Match Directly") -->
+<section>
+    <h2>3. Create Match Directly (Optional)</h2>
+    <button id="createMatchBtn">New Match &amp; Connect</button>
+    <span id="matchStatus"></span>
+    <p><small><em>Note: This requires a <code>POST /matches</code> endpoint on the backend.</em></small></p>
+</section>
+<!-- MANAGE LOBBY / JOIN PLAYERS -->
+<section>
+    <h2>Join Players to Lobby</h2>
+    <p>Lobby ID to join: <strong id="joinLobbyIdDisplay"></strong> (uses value from "Start Match" section)</p>
+    <div id="joinPlayerButtonsContainer">
+        <!-- Buttons will be added here by JavaScript -->
+    </div>
+    <span id="joinLobbyStatus"></span>
+</section>
+
+
+<!-- START MATCH (from existing lobby - now step 4) -->
+<section>
+    <h2>4. Start Match from Lobby</h2>
+    <input id="lobbyIdInput" placeholder="Lobby ID (auto-filled after creation)">
+    <button id="startMatchBtn">Start Match</button>
+    <span id="startMatchStatus"></span>
+</section>
+
+<!-- CONNECT & GAME ID (now step 5) -->
+<section>
+    <h2>5. Connect to Game</h2>
+    <input id="gameIdInput" placeholder="Match ID (auto-filled after starting)">
+    <button id="connectBtn">Connect All 4</button>
+</section>
+
+<!-- PLAYER PANELS -->
+<div class="players">
+    <div class="player" id="Alice">
+        <h2>Alice</h2>
+        <div class="section"><strong>Public:</strong><pre class="pub"></pre></div>
+        <div class="section"><strong>Private (Hand & Turn):</strong><pre class="prv"></pre></div>
+        <div class="section"><strong>Hand Actions:</strong><div class="cards"></div></div>
+        <div class="section"><strong>Bidding Actions:</strong><div class="bids"></div></div>
+    </div>
+    <div class="player" id="Bob">
+        <h2>Bob</h2>
+        <div class="section"><strong>Public:</strong><pre class="pub"></pre></div>
+        <div class="section"><strong>Private (Hand & Turn):</strong><pre class="prv"></pre></div>
+        <div class="section"><strong>Hand Actions:</strong><div class="cards"></div></div>
+        <div class="section"><strong>Bidding Actions:</strong><div class="bids"></div></div>
+    </div>
+    <div class="player" id="Carol">
+        <h2>Carol</h2>
+        <div class="section"><strong>Public:</strong><pre class="pub"></pre></div>
+        <div class="section"><strong>Private (Hand & Turn):</strong><pre class="prv"></pre></div>
+        <div class="section"><strong>Hand Actions:</strong><div class="cards"></div></div>
+        <div class="section"><strong>Bidding Actions:</strong><div class="bids"></div></div>
+    </div>
+    <div class="player" id="Dave">
+        <h2>Dave</h2>
+        <div class="section"><strong>Public:</strong><pre class="pub"></pre></div>
+        <div class="section"><strong>Private (Hand & Turn):</strong><pre class="prv"></pre></div>
+        <div class="section"><strong>Hand Actions:</strong><div class="cards"></div></div>
+        <div class="section"><strong>Bidding Actions:</strong><div class="bids"></div></div>
+    </div>
+</div>
+
+<!-- SockJS & STOMP.js -->
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/webstomp-client@1/dist/webstomp.min.js"></script> <!-- Using webstomp-client as per project setup -->
+
+<script>
+    // ── CONFIGURATION ──
+
+    const apiBase = 'http://localhost:8080'; // Ensure this matches your backend port
+    const PLAYERS = ['Alice', 'Bob', 'Carol', 'Dave'];
+    const TEAM_A  = ['Alice', 'Carol'];
+    const TEAM_B  = ['Bob', 'Dave'];
+    // const ALL_TRUMPS = ['HERC', 'KARO', 'TREF', 'PIK', 'ALL_TRUMPS', 'NO_TRUMPS']; // Example trumps - UNCOMMENT IF NEEDED
+    let jwtToken = localStorage.getItem('jwtToken');
+    let currentUser = JSON.parse(localStorage.getItem('currentUser')); // ADDED: load current user
+
+
+    // This is a placeholder for the "Create Match Directly" section.
+    // Adjust its structure based on what your backend /matches endpoint expects for originLobby.
+    const originLobbyDetails = {
+        id: "67e2cc0d551a4c6f45205751" // Example ID
+        // Add other relevant fields your backend might expect for a "Lobby DTO"
+    };
+    const testUsers = {
+        // Alice's details will come from the 'currentUser' object after she logs in.
+        "Bob":   { id: "67e2ed561351f600a2269ede",   username: "lukastheklukas" }, // Example UUID or ID
+        "Carol": { id: "6824a3d34b3df272cf8e37b0", username: "LOLOLOL1" },
+        "Dave":  { id: "68249feb4b3df272cf8e37af",  username: "YOYOY1234" }
+    };
+
+    const TEAM_A_ID = "A";
+    const TEAM_B_ID = "B";
+
+    let currentLobbyData = null;
+
+
+    // DOM Elements
+    const loginBtn = document.getElementById('loginBtn');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const loginStatusEl = document.getElementById('loginStatus');
+    const currentUserInfoEl = document.getElementById('currentUserInfo'); // ADDED
+    const joinLobbyIdDisplayEl = document.getElementById('joinLobbyIdDisplay');
+    const joinPlayerButtonsContainerEl = document.getElementById('joinPlayerButtonsContainer');
+    const joinLobbyStatusEl = document.getElementById('joinLobbyStatus');
+    const manageLobbyIdDisplayEl = document.getElementById('manageLobbyIdDisplay');
+    const refreshLobbyBtnEl = document.getElementById('refreshLobbyBtn');
+    const lobbyManagementStatusEl = document.getElementById('lobbyManagementStatus');
+    const teamAListEl = document.getElementById('teamAList');
+    const teamBListEl = document.getElementById('teamBList');
+    const unassignedPlayersListEl = document.getElementById('unassignedPlayersList');
+
+    // ADDED: DOM Elements for Create Lobby section
+    const lobbyNameInputEl = document.getElementById('lobbyNameInput');
+    const privateLobbyCheckboxEl = document.getElementById('privateLobbyCheckbox');
+    const lobbyPasswordInputEl = document.getElementById('lobbyPasswordInput');
+    const createLobbyBtn = document.getElementById('createLobbyBtn');
+    const createLobbyStatusEl = document.getElementById('createLobbyStatus');
+
+    // Existing DOM elements
+    const createMatchBtn = document.getElementById('createMatchBtn'); // For "Create Match Directly"
+    const matchStatusEl = document.getElementById('matchStatus');     // For "Create Match Directly"
+
+    const gameIdInputEl = document.getElementById('gameIdInput');     // For "Connect to Game" and auto-fill
+    const connectBtn = document.getElementById('connectBtn');
+
+    const startMatchBtn = document.getElementById('startMatchBtn');       // For "Start Match from Lobby"
+    const lobbyIdInputEl = document.getElementById('lobbyIdInput');       // For "Start Match from Lobby" (auto-filled)
+    const startMatchStatusEl = document.getElementById('startMatchStatus'); // For "Start Match from Lobby"
+
+    // ADDED: Update UI based on login state
+    function updateLoginStateUI() {
+        if (currentUser && jwtToken) {
+            currentUserInfoEl.textContent = `Logged in as: ${currentUser.username} (ID: ${currentUser.id})`;
+            currentUserInfoEl.style.color = 'green';
+        } else {
+            currentUserInfoEl.textContent = 'Not logged in.';
+            currentUserInfoEl.style.color = 'red';
+        }
+    }
+    updateLoginStateUI(); // Initial call
+
+    // ADDED: Toggle lobby password input based on checkbox
+    if (privateLobbyCheckboxEl) { // Check if element exists to avoid errors if HTML isn't updated yet
+        privateLobbyCheckboxEl.onchange = () => {
+            lobbyPasswordInputEl.style.display = privateLobbyCheckboxEl.checked ? 'inline-block' : 'none';
+            if (!privateLobbyCheckboxEl.checked) {
+                lobbyPasswordInputEl.value = ''; // Clear password if unchecked
+            }
+        };
+        // Initialize display
+        lobbyPasswordInputEl.style.display = privateLobbyCheckboxEl.checked ? 'inline-block' : 'none';
+    }
+
+    function updateJoinLobbyIdDisplay() {
+        const lobbyId = lobbyIdInputEl.value;
+        if (joinLobbyIdDisplayEl) {
+            joinLobbyIdDisplayEl.textContent = lobbyId ? lobbyId : "N/A (Create or enter Lobby ID first)";
+        }
+        populateJoinPlayerButtons(lobbyId);
+    }
+
+    // Call this when lobbyIdInputEl might change (e.g., after lobby creation)
+    if (lobbyIdInputEl) {
+        lobbyIdInputEl.addEventListener('input', updateJoinLobbyIdDisplay);
+    }
+    // Also call after a lobby is successfully created in createLobbyBtn.onclick
+    // In createLobbyBtn.onclick, after: lobbyIdInputEl.value = createdLobby.id;
+    // Add: updateJoinLobbyIdDisplay();
+    async function fetchAndDisplayLobbyDetails(lobbyId) {
+        if (!lobbyId) {
+            lobbyManagementStatusEl.textContent = "No Lobby ID provided.";
+            if(manageLobbyIdDisplayEl) manageLobbyIdDisplayEl.textContent = "N/A";
+            clearLobbyDisplay();
+            return null;
+        }
+        if(manageLobbyIdDisplayEl) manageLobbyIdDisplayEl.textContent = lobbyId;
+        lobbyManagementStatusEl.textContent = "Fetching lobby details...";
+        try {
+            const response = await fetch(`${apiBase}/lobbies/${lobbyId}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${jwtToken}` }
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to fetch lobby: ${response.status} ${await response.text()}`);
+            }
+            const lobbyData = await response.json();
+            currentLobbyData = lobbyData; // Store it
+            displayLobbyState(lobbyData);
+            lobbyManagementStatusEl.textContent = `Lobby "${lobbyData.name}" loaded.`;
+            return lobbyData;
+        } catch (error) {
+            lobbyManagementStatusEl.textContent = `⚠️ Error: ${error.message}`;
+            console.error("Error fetching lobby details:", error);
+            clearLobbyDisplay();
+            return null;
+        }
+    }
+
+    function clearLobbyDisplay() {
+        if(teamAListEl) teamAListEl.innerHTML = '';
+        if(teamBListEl) teamBListEl.innerHTML = '';
+        if(unassignedPlayersListEl) unassignedPlayersListEl.innerHTML = '';
+    }
+
+    // Function to render the lobby state (players in teams, unassigned)
+    function displayLobbyState(lobbyData) {
+        if (!lobbyData) {
+            clearLobbyDisplay();
+            return;
+        }
+
+        clearLobbyDisplay(); // Clear previous state
+
+        const renderPlayerList = (listEl, players, currentTeamId) => {
+            if (!players || !listEl) return;
+            players.forEach(player => {
+                const li = document.createElement('li');
+                li.textContent = `${player.username} (ID: ${player.id.substring(0,6)}...) `; // Display username & part of ID
+
+                // Add "Move to Team A" button
+                if (currentTeamId !== TEAM_A_ID && (!lobbyData.teamAPlayers || lobbyData.teamAPlayers.length < 2)) {
+                    const moveToABtn = document.createElement('button');
+                    moveToABtn.textContent = "-> A";
+                    moveToABtn.title = "Move to Team A";
+                    moveToABtn.onclick = () => handleSwitchTeam(lobbyData.id, player.id, TEAM_A_ID);
+                    li.appendChild(moveToABtn);
+                }
+
+                // Add "Move to Team B" button
+                if (currentTeamId !== TEAM_B_ID && (!lobbyData.teamBPlayers || lobbyData.teamBPlayers.length < 2)) {
+                    const moveToBBtn = document.createElement('button');
+                    moveToBBtn.textContent = "-> B";
+                    moveToBBtn.title = "Move to Team B";
+                    moveToBBtn.onclick = () => handleSwitchTeam(lobbyData.id, player.id, TEAM_B_ID);
+                    li.appendChild(moveToBBtn);
+                }
+                // Potentially add "Move to Unassigned" if currentTeamId is A or B
+                // This depends on how your backend handles `targetTeam` for unassigning.
+                // If `targetTeam` can be null or "UNASSIGNED":
+                // if (currentTeamId === TEAM_A_ID || currentTeamId === TEAM_B_ID) {
+                //    const moveToUnassignedBtn = document.createElement('button');
+                //    moveToUnassignedBtn.textContent = "-> Unassigned";
+                //    moveToUnassignedBtn.onclick = () => handleSwitchTeam(lobbyData.id, player.id, null); // or "UNASSIGNED"
+                //    li.appendChild(moveToUnassignedBtn);
+                // }
+                listEl.appendChild(li);
+            });
+        };
+
+        if(teamAListEl) renderPlayerList(teamAListEl, lobbyData.teamAPlayers, TEAM_A_ID);
+        if(teamBListEl) renderPlayerList(teamBListEl, lobbyData.teamBPlayers, TEAM_B_ID);
+        if(unassignedPlayersListEl) renderPlayerList(unassignedPlayersListEl, lobbyData.unassignedPlayers, null); // null or a specific ID for unassigned
+    }
+
+    // Function to handle team switching
+    async function handleSwitchTeam(lobbyId, userId, targetTeam) {
+        lobbyManagementStatusEl.textContent = `Switching player ${userId.substring(0,6)} to team ${targetTeam}...`;
+        const switchRequest = {
+            lobbyId: lobbyId,
+            userId: userId,
+            targetTeam: targetTeam
+        };
+
+        try {
+            const response = await fetch(`${apiBase}/lobbies/switchTeam`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${jwtToken}`
+                },
+                body: JSON.stringify(switchRequest)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed to switch team: ${response.status} ${errorText}`);
+            }
+
+            const updatedLobby = await response.json();
+            currentLobbyData = updatedLobby; // Store it
+            displayLobbyState(updatedLobby); // Refresh the display
+            lobbyManagementStatusEl.textContent = `✅ Player switched. Lobby updated.`;
+        } catch (error) {
+            lobbyManagementStatusEl.textContent = `⚠️ Error switching team: ${error.message}`;
+            console.error('Error switching team:', error);
+        }
+    }
+
+    // Function to create join buttons for other players
+    function populateJoinPlayerButtons(lobbyId) {
+        if (!joinPlayerButtonsContainerEl) return;
+        joinPlayerButtonsContainerEl.innerHTML = ''; // Clear existing buttons
+
+        if (!lobbyId) {
+            joinPlayerButtonsContainerEl.textContent = 'Enter a Lobby ID to enable joining.';
+            return;
+        }
+
+        // Create buttons for players other than the current logged-in user
+        PLAYERS.forEach(playerName => {
+            // Don't create a join button for the currently logged-in user (the host)
+            if (currentUser && currentUser.username === playerName) {
+                return;
+            }
+
+            const playerDetails = testUsers[playerName];
+            if (!playerDetails && (!currentUser || currentUser.username !== playerName)) {
+                console.warn(`No test user details for ${playerName} and not current user.`);
+                return; // Skip if no details and not the host
+            }
+
+
+            const button = document.createElement('button');
+            button.textContent = `Join as ${playerName}`;
+            button.onclick = async () => {
+                // Ensure we have user details for the player joining
+                const userToJoin = playerDetails; // Uses predefined testUsers
+                if (!userToJoin || !userToJoin.id) {
+                    joinLobbyStatusEl.textContent = `⚠️ Error: User details for ${playerName} are missing.`;
+                    console.error("Missing user details for join attempt:", playerName);
+                    return;
+                }
+
+                joinLobbyStatusEl.textContent = `Attempting to join ${playerName}...`;
+                try {
+                    const lobbyPassword = privateLobbyCheckboxEl.checked ? lobbyPasswordInputEl.value : null;
+
+                    const joinRequestPayload = {
+                        lobbyId: lobbyId,
+                        userId: userToJoin.id,
+                        // username: userToJoin.username, // Include if your DTO expects it directly
+                        // If your DTO expects a nested user object:
+                        // user: { id: userToJoin.id, username: userToJoin.username },
+                        password: lobbyPassword // Send password if lobby is private
+                    };
+
+                    // IMPORTANT: Adjust the endpoint and payload based on your LobbyController's join method
+                    // Assuming endpoint is /api/lobbies/join
+                    const res = await fetch(`${apiBase}/lobbies/join`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            // Joining a lobby might also require authentication for the joining user
+                            // If so, you'd need a mechanism to get a JWT for Bob, Carol, Dave.
+                            // For now, assuming the host's JWT might be sufficient or no JWT needed for join,
+                            // or the backend handles authorization differently for 'join'.
+                            // If JWT is for the JOINING user, this simple test setup won't work without multiple logins.
+                            'Authorization': `Bearer ${jwtToken}` // This sends host's token
+                        },
+                        body: JSON.stringify(joinRequestPayload)
+                    });
+
+                    if (!res.ok) {
+                        const errorBody = await res.text();
+                        throw new Error(`Failed to join as ${playerName}: ${res.status} ${errorBody}`);
+                    }
+                    const updatedLobby = await res.json();
+                    joinLobbyStatusEl.textContent = `✅ ${playerName} joined lobby! Players: ${updatedLobby.unassignedPlayers?.length + updatedLobby.teamAPlayers?.length + updatedLobby.teamBPlayers?.length}`;
+                    console.log(`${playerName} joined lobby:`, updatedLobby);
+                    // Optionally, refresh the main lobby display or player list here
+                } catch (error) {
+                    joinLobbyStatusEl.textContent = `⚠️ Error joining as ${playerName}: ${error.message}`;
+                    console.error(error);
+                }
+            };
+            joinPlayerButtonsContainerEl.appendChild(button);
+        });
+    }
+    if (refreshLobbyBtnEl) {
+        refreshLobbyBtnEl.onclick = () => {
+            const lobbyId = lobbyIdInputEl.value; // Assuming this input holds the active lobby ID
+            if (lobbyId) {
+                fetchAndDisplayLobbyDetails(lobbyId);
+            } else {
+                lobbyManagementStatusEl.textContent = "Enter a Lobby ID in 'Start Match' section first to refresh.";
+            }
+        };
+    }
+    if (lobbyIdInputEl && manageLobbyIdDisplayEl) {
+        lobbyIdInputEl.addEventListener('input', () => {
+            manageLobbyIdDisplayEl.textContent = lobbyIdInputEl.value ? lobbyIdInputEl.value : "N/A";
+            // Optionally auto-refresh, or prompt user to click refresh
+            if(lobbyIdInputEl.value) { // if there's some ID
+                fetchAndDisplayLobbyDetails(lobbyIdInputEl.value);
+            } else {
+                clearLobbyDisplay();
+                manageLobbyIdDisplayEl.textContent = "N/A";
+            }
+        });
+    }
+
+
+
+    // ── LOGIN HANDLER (MODIFIED) ──
+    loginBtn.onclick = async () => {
+        const username = usernameInput.value;
+        const password = passwordInput.value;
+        loginStatusEl.textContent = 'Logging in...';
+        try {
+            const res = await fetch(`${apiBase}/api/auth/login`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username, password })
+            });
+            if (!res.ok) throw new Error(`Login failed: ${res.status} ${await res.text()}`);
+            const body = await res.json();
+            jwtToken = body.token;
+            // --- MODIFICATION START ---
+            // IMPORTANT: Assumes your login response includes a 'user' object with 'id' and 'username'
+            if (body.user && body.user.id && body.user.username) {
+                currentUser = { id: body.user.id, username: body.user.username };
+                localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            } else {
+                // Fallback or error if user object is not as expected
+                console.warn("Login response did not include expected user details (id, username).", body);
+                currentUser = null; // Ensure currentUser is cleared if details are missing
+                localStorage.removeItem('currentUser');
+            }
+            // --- MODIFICATION END ---
+            localStorage.setItem('jwtToken', jwtToken);
+            loginStatusEl.textContent = '✅ Logged in';
+            updateLoginStateUI(); // Update user info display
+            console.log("Logged in, JWT:", jwtToken, "User:", currentUser);
+        } catch (e) {
+            loginStatusEl.textContent = `❌ Login failed: ${e.message}`;
+            jwtToken = null;
+            currentUser = null;
+            localStorage.removeItem('jwtToken');
+            localStorage.removeItem('currentUser');
+            updateLoginStateUI();
+            console.error("Login error:", e);
+        }
+    };
+
+    // --- ADDED: CREATE LOBBY HANDLER ---
+    if (createLobbyBtn) { // Check if element exists
+        createLobbyBtn.onclick = async () => {
+            console.log('Create Lobby button clicked.'); // 1. First check: Is the click even registered?
+
+            console.log('Current user:', currentUser); // 2. What is currentUser?
+            console.log('JWT Token:', jwtToken);       // 3. What is jwtToken?
+
+            if (!currentUser || !currentUser.id) {
+                lobbyMessagesEl.textContent = '⚠️ Log in first and ensure user details are loaded. (Logged in createLobbyBtn)';
+                console.error('Create Lobby: currentUser is not set or has no id.', currentUser); // 4. Did it fail this check?
+                return;
+            }
+
+            const lobbyName = lobbyNameInput.value;
+// Corrected line
+            const isLobbyPrivate = privateLobbyCheckboxEl.checked;
+            console.log('Lobby Name:', lobbyName);       // 5. Lobby name value
+            console.log('Is Private:', isLobbyPrivate);       // 6. Is private value
+
+            if (!lobbyName.trim()) {
+                lobbyMessagesEl.textContent = '⚠️ Lobby name cannot be empty.';
+                console.warn('Create Lobby: Lobby name is empty.'); // 7. Did it fail this check?
+                return;
+            }
+
+            const lobbyData = {
+                name: lobbyName,
+                isPrivate: isLobbyPrivate,
+                hostUser: {                   // Create the nested hostUser object
+                    id: currentUser.id,
+                    username: currentUser.username // Include username as UserSimpleDTO expects it
+                }
+                // Make sure hostId is being sent
+                // maxPlayers might be another field you need, defaulting or from input
+            };
+
+            console.log('Lobby data to be sent:', lobbyData); // 8. What data is about to be sent?
+            console.log('About to send fetch request to /api/lobbies...'); // 9. Right before fetch
+
+            try {
+                const response = await fetch('/lobbies', { // ENSURE THIS URL IS CORRECT
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${jwtToken}`
+                    },
+                    body: JSON.stringify(lobbyData)
+                });
+
+                console.log('Fetch response received:', response); // 10. Response object
+
+                if (response.ok) {
+                    const createdLobby = await response.json();
+                    lobbyMessagesEl.textContent = `✅ Lobby "${createdLobby.name}" created! ID: ${createdLobby.id}`;
+                    console.log('Lobby created:', createdLobby);
+                    // Optionally, clear inputs or navigate
+                } else {
+                    const errorBody = await response.text(); // Get text in case it's not JSON
+                    lobbyMessagesEl.textContent = `⚠️ Error creating lobby: ${response.status} ${response.statusText}. ${errorBody}`;
+                    console.error('Error creating lobby:', response.status, response.statusText, errorBody);
+                }
+            } catch (error) {
+                lobbyMessagesEl.textContent = '⚠️ Network or other error creating lobby.';
+                console.error('Network or other error creating lobby:', error); // 11. Catch any other errors
+            }
+        };
+
+    }
+    updateJoinLobbyIdDisplay();
+
+    // --- END OF ADDED: CREATE LOBBY HANDLER ---
+
+    // ── CREATE MATCH & AUTO-CONNECT (Existing - for "Create Match Directly") ──
+    createMatchBtn.onclick = async () => {
+        if (!jwtToken) {
+            matchStatusEl.textContent = '⚠️ Log in first';
+            return;
+        }
+        matchStatusEl.textContent = 'Creating match directly...';
+        try {
+            const res = await fetch(`${apiBase}/matches`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + jwtToken
+                },
+                body: JSON.stringify({
+                    teamA: TEAM_A.map(name => ({ id: name, username: name })), // Assuming backend expects objects with id and username
+                    teamB: TEAM_B.map(name => ({ id: name, username: name })), // Assuming backend expects objects with id and username
+                    originLobby: originLobbyDetails, // Using the placeholder
+                    gameMode: 'CASUAL'
+                })
+            });
+            if (!res.ok) throw new Error(`Create match failed: ${res.status} ${await res.text()}`);
+            const match = await res.json();
+            matchStatusEl.textContent = `✅ Direct Match Created! ID: ${match.id}`;
+            if (gameIdInputEl) gameIdInputEl.value = match.id; // Auto-fill for "Connect to Game"
+            console.log("Direct Match created:", match);
+            if (typeof connectAll === "function") connectAll(match.id); // Connect all players
+        } catch (e) {
+            matchStatusEl.textContent = `❌ Direct Create failed: ${e.message}`;
+            console.error("Direct Create match error:", e);
+        }
+    };
+
+    /* ── START MATCH HANDLER (Existing - for "Start Match from Lobby") ─────────────────── */
+    startMatchBtn.onclick = async () => {
+        if (!jwtToken) {
+            startMatchStatusEl.textContent = '⚠️ Log in first';
+            return;
+        }
+        const lobbyId = lobbyIdInputEl.value.trim();
+        if (!lobbyId) {
+            startMatchStatusEl.textContent = '⚠️ Enter Lobby ID (or create one first)';
+            return;
+        }
+        startMatchStatusEl.textContent = 'Starting match…';
+        try {
+            const res = await fetch(`${apiBase}/lobbies/${lobbyId}/start-match`, {
+                method : 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + jwtToken,
+                    'Content-Type' : 'application/json'
+                },
+                body   : JSON.stringify({}) // Empty body if backend expects it, or specific payload
+            });
+
+            if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+
+            const match = await res.json(); // MatchDTO returned
+            startMatchStatusEl.textContent = `✅ Match Started from Lobby! New Match ID: ${match.id}`;
+            if (gameIdInputEl) gameIdInputEl.value = match.id; // Pre-fill “Connect to Game” field
+            console.log("Match started from lobby:", match);
+            if (typeof connectAll === "function") connectAll(match.id); // Auto-connect everyone
+        } catch (e) {
+            startMatchStatusEl.textContent = `❌ Start failed: ${e.message}`;
+            console.error('Start-match error:', e);
+        }
+    };
+
+
+    // ── CONNECT BUTTON ──
+    // Global STOMP client and player sockets
+    let stompClient = null; // This can be a single client if multiplexing or one per player
+    const playerSockets = {}; // Stores individual STOMP clients if one-per-player
+
+    connectBtn.onclick = () => {
+        const id = gameIdInputEl.value.trim();
+        if (!id) {
+            alert('Please enter a Match ID to connect.'); // Or update a status element
+            return;
+        }
+        if (typeof connectAll === "function") {
+            connectAll(id);
+        } else {
+            console.error("connectAll function is not defined.");
+            alert("Error: Connection function not available.");
+        }
+    };
+
+    function connectAll(matchId) {
+        if (!matchId) {
+            alert("Match ID is needed to connect!");
+            console.warn("connectAll called without matchId");
+            return;
+        }
+        if (!jwtToken) {
+            alert("Log in before connecting to the game.");
+            PLAYERS.forEach(playerDisplayName => {
+                // Attempt to update UI using display name if config is missing
+                const playerPanel = document.querySelector(`#${playerDisplayName} .pub`);
+                if (playerPanel) playerPanel.textContent = 'Please log in first.';
+            });
+            return;
+        }
+        console.log(`Connecting all players to Match ID: ${matchId}`);
+
+        PLAYERS.forEach(playerDisplayName => {
+            // connectPlayer will handle resolving the actual username
+            connectPlayer(playerDisplayName, matchId);
+        });
+    }
+
+
+    function connectPlayer(playerDisplayName, matchId) { // Changed 'playerName' to 'playerDisplayName'
+        let actualUsername;
+
+        // Determine the actual database username
+        if (playerDisplayName === 'Alice') {
+            if (currentUser && currentUser.username) {
+                actualUsername = currentUser.username;
+            } else {
+                console.error(`Current user (Alice) details or username not found in localStorage. Cannot connect Alice.`);
+                const panel = document.querySelector(`#${playerDisplayName} .pub`);
+                if (panel) panel.textContent = `Error: Alice's user data not found.`;
+                return;
+            }
+        } else if (testUsers[playerDisplayName] && testUsers[playerDisplayName].username) {
+            actualUsername = testUsers[playerDisplayName].username;
+        } else {
+            console.error(`No database username found for display name: ${playerDisplayName}. Cannot connect.`);
+            const panel = document.querySelector(`#${playerDisplayName} .pub`);
+            if (panel) panel.textContent = `Error: Config for ${playerDisplayName} missing.`;
+            return;
+        }
+
+        // Disconnect previous connection for this player (identified by actualUsername) if any
+        const existingSocket = playerSockets[actualUsername];
+        if (existingSocket && existingSocket.connected) {
+            try {
+                existingSocket.disconnect(() => {
+                    console.log(`Disconnected previous session for ${actualUsername} (display name: ${playerDisplayName}).`);
+                    proceedWithConnection(actualUsername, matchId, playerDisplayName); // Pass both for full context if needed later
+                });
+            } catch (e) {
+                console.warn(`Error disconnecting ${actualUsername}: ${e}. Proceeding with new connection.`);
+                proceedWithConnection(actualUsername, matchId, playerDisplayName);
+            }
+        } else {
+            proceedWithConnection(actualUsername, matchId, playerDisplayName);
+        }
+    }
+
+
+    function proceedWithConnection(playerName, matchId) {
+        const playerPanelPub = document.querySelector(`#${playerName} .pub`);
+        const playerPanelPrv = document.querySelector(`#${playerName} .prv`);
+
+        if (playerPanelPub) playerPanelPub.textContent = `Connecting ${playerName} to match ${matchId}...`;
+
+        const socket = new SockJS(`${apiBase}/ws?user=${encodeURIComponent(playerName)}`);
+        const client = webstomp.over(socket);
+        client.debug = function(str) {
+            console.log(`[${playerName} WS DEBUG] ${str}`);
+        };
+
+        const headers = {
+            'Authorization': 'Bearer ' + jwtToken,
+            // Send player name and match ID, useful for backend to route messages
+            // These might be sent as part of STOMP subscribe/send frames too, depending on backend
+            'X-Player-Name': playerName,
+            'X-Match-ID': matchId
+        };
+        console.log(`[${playerName}] Attempting WS connection to ${matchId} with token:`, jwtToken);
+
+        client.connect(headers, (frame) => {
+            console.log(`${playerName} connected to Match ${matchId}:`, frame);
+            if (playerPanelPub) playerPanelPub.textContent = 'Connected. Waiting for game state...';
+            playerSockets[playerName] = client; // Store the client
+
+            // Subscribe to public game events for this match
+            client.subscribe(`/topic/games/${matchId}`, (message) => {
+                try {
+                    console.log(`[${playerName}] Public message received on /topic/games/${matchId}. Raw:`, message); // ADD THIS
+
+                    const gameState = JSON.parse(message.body);
+                    if (playerPanelPub) playerPanelPub.textContent = JSON.stringify(gameState, null, 2);
+                    // Potentially update more specific UI parts based on gameState
+                } catch (e) {
+                    console.error("Error parsing public message:", e, message.body);
+                    if (playerPanelPub) playerPanelPub.textContent = "Error processing public event.";
+                }
+            }, headers); // Pass headers for subscription if needed by backend/broker
+
+            // Subscribe to private messages for this player in this match
+            // The path /user/queue/private or similar depends on your Spring Security & STOMP config
+            // It often uses the authenticated user's principal name.
+            // Or, if your backend maps it differently (e.g., using X-Player-Name):
+            client.subscribe(`/user/queue/games/${matchId}`, (message) => { // Or specific path like /user/queue/private/${playerName}
+                try {
+                    console.log(`[${playerName} Private message received on /user/queue/games/${matchId}. Raw:`, message); // ADD THIS
+
+                    const privateState = JSON.parse(message.body);
+                    if (playerPanelPrv) playerPanelPrv.textContent = JSON.stringify(privateState, null, 2);
+                    renderPlayerActions(playerName, privateState, matchId);
+                } catch (e) {
+                    console.error("Error parsing private message:", e, message.body);
+                    if (playerPanelPrv) playerPanelPrv.textContent = "Error processing private event.";
+                }
+            }, headers);
+
+            // Example: Announce join or request initial state
+            // client.send(`/app/match/${matchId}/join`, JSON.stringify({ player: playerName, id: currentUser.id }), headers);
+
+        }, (error) => {
+            console.error(`${playerName} connection error to Match ${matchId}:`, error);
+            if (playerPanelPub) playerPanelPub.textContent = `Connection Error for ${playerName}. Check console.`;
+            // Clean up failed connection attempt
+            if (playerSockets[playerName]) {
+                delete playerSockets[playerName];
+            }
+        });
+    }
+
+    function sendPlayerAction(playerName, actionType, payload) {
+        const matchId = gameIdInputEl.value.trim();
+        if (!matchId) {
+            console.warn("Cannot send action: No Match ID selected.");
+            alert("No Match ID selected for action.");
+            return;
+        }
+        if (playerSockets[playerName] && playerSockets[playerName].connected) {
+            const destination = `/app/match/${matchId}/${actionType}`; // e.g., /app/match/match123/playCard
+            const headers = {
+                'Authorization': 'Bearer ' + jwtToken,
+                'X-Player-Name': playerName, // Good practice to include context
+                'X-Match-ID': matchId
+            };
+            playerSockets[playerName].send(destination, JSON.stringify(payload), headers);
+            console.log(`${playerName} sent to ${destination}:`, payload);
+        } else {
+            console.warn(`${playerName} is not connected or STOMP client not found. Cannot send ${actionType}.`);
+            alert(`${playerName} is not connected. Action not sent.`);
+        }
+    }
+    // Initialize the display elements
+    if (lobbyIdInputEl) {
+        manageLobbyIdDisplayEl.textContent = lobbyIdInputEl.value ? lobbyIdInputEl.value : "N/A";
+        if (lobbyIdInputEl.value) {
+            // fetchAndDisplayLobbyDetails(lobbyIdInputEl.value); // Optional: auto-load on page init if ID is present
+        }
+    } else {
+        if(manageLobbyIdDisplayEl) manageLobbyIdDisplayEl.textContent = "N/A";
+    }
+    clearLobbyDisplay();
+
+
+    function renderPlayerActions(playerName, privateState, matchId) {
+        const cardsDiv = document.querySelector(`#${playerName} .cards`);
+        const bidsDiv = document.querySelector(`#${playerName} .bids`);
+        if (!cardsDiv || !bidsDiv) return;
+
+        cardsDiv.innerHTML = ''; // Clear previous
+        bidsDiv.innerHTML = '';   // Clear previous
+
+        if (privateState.turn && privateState.turn.player === playerName) {
+            // Example: if privateState.hand contains playable cards
+            if (privateState.hand && Array.isArray(privateState.hand)) {
+                privateState.hand.forEach(card => { // Assuming card is an object { suit, rank }
+                    if (card && card.rank && card.suit) {
+                        const btn = document.createElement('button');
+                        btn.textContent = `${card.rank}${card.suit.charAt(0)}`; // e.g., AS, KH
+                        btn.onclick = () => sendPlayerAction(playerName, 'playCard', { card });
+                        cardsDiv.appendChild(btn);
+                    }
+                });
+            }
+            // Example: if privateState.availableBids contains possible bids
+            if (privateState.availableBids && Array.isArray(privateState.availableBids)) {
+                privateState.availableBids.forEach(bid => { // Assuming bid is a string or object
+                    const btn = document.createElement('button');
+                    btn.textContent = typeof bid === 'object' ? bid.name : bid;
+                    btn.onclick = () => sendPlayerAction(playerName, 'makeBid', { bid });
+                    bidsDiv.appendChild(btn);
+                });
+            }
+        } else {
+            cardsDiv.textContent = "Not your turn or no actions available.";
+            bidsDiv.textContent = "";
+        }
+    }
+
+    // Initial UI setup for password field if checkbox is present
+    if (privateLobbyCheckboxEl) {
+        privateLobbyCheckboxEl.dispatchEvent(new Event('change'));
+    }
+
+</script>
+</body>
+</html>

@@ -21,6 +21,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.firewall.HttpFirewall;
+import org.springframework.security.web.firewall.StrictHttpFirewall;
 
 @Configuration
 @EnableMethodSecurity
@@ -80,7 +81,7 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authenticationProvider(authProvider)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/ws/**")
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/ws/**","/index.html")
                         .permitAll()
                         .anyRequest().authenticated()
                 )
@@ -97,8 +98,12 @@ public class SecurityConfig {
     @Bean
     @Primary
     public HttpFirewall allowAllHostsFirewall() {
-        return new org.springframework.security.web.firewall.DefaultHttpFirewall();
+        // Use StrictHttpFirewall but disable host-name validation completely
+        StrictHttpFirewall firewall = new StrictHttpFirewall();
+        firewall.setAllowedHostnames(host -> true);   // <- allow any hostname or IP
+        return firewall;
     }
+
 
 
     /**

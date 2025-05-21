@@ -3,7 +3,9 @@ package backend.belatro.services;
 import backend.belatro.dtos.BidDTO;
 import backend.belatro.dtos.PrivateGameView;
 import backend.belatro.dtos.PublicGameView;
+import backend.belatro.events.GameStartedEvent;
 import backend.belatro.pojo.gamelogic.*;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -16,18 +18,26 @@ public class BelotGameService {
     private static final String KEY_PREFIX = "belot:game:";
 
     private final RedisTemplate<String, BelotGame> redis;
+    private final ApplicationEventPublisher eventPublisher; // Inject publisher
 
-    public BelotGameService(RedisTemplate<String, BelotGame> redis) {
+    public BelotGameService(RedisTemplate<String, BelotGame> redis, ApplicationEventPublisher eventPublisher) {
         this.redis = redis;
+        this.eventPublisher = eventPublisher;
     }
 
 
     public BelotGame start(String gameId, Team teamA, Team teamB) {
         BelotGame game = new BelotGame(gameId, teamA, teamB);
-        game.startGame();
+        game.startGame(); // Deals cards, sets bidding phase, etc.
         save(game);
+
+        // Publish an event after the game is started and saved
+        eventPublisher.publishEvent(new GameStartedEvent(this, gameId));
+        System.out.println("Published GameStartedEvent for gameId: " + gameId); // For logging
+
         return game;
     }
+
 
 
     public BelotGame get(String gameId) {
