@@ -59,17 +59,15 @@ public class GameSocketController {
 
         PublicGameView pub = svc.toPublicView(game);
         bus.convertAndSend("/topic/games/" + gameId, pub);
-        System.out.println("Sent public view to /topic/games/" + gameId);
+//        System.out.println("Sent public view to /topic/games/" + gameId);
 
 
-        Stream.concat(game.getTeamA().getPlayers().stream(),
-                        game.getTeamB().getPlayers().stream())
-                .forEach(player -> {
+        game.getTurnOrder().forEach(player -> {
                     // CRITICAL: Ensure player.getId() here returns the username (e.g., "Alice")
                     String playerId = player.getId(); // This must be the username
-                    System.out.println("Sending private view to player: " + playerId + " for game: " + gameId);
+//                    System.out.println("Sending private view to player: " + playerId + " for game: " + gameId);
                     PrivateGameView prv = svc.toPrivateView(game, player);
-                    System.out.println("Private view: " + prv);
+//                    System.out.println("Private view: " + prv);
                     bus.convertAndSendToUser(
                             playerId,
                             "/queue/games/" + gameId,

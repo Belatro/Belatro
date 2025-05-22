@@ -3,10 +3,7 @@ package backend.belatro.pojo.gamelogic;
 import backend.belatro.pojo.gamelogic.enums.Boja;
 import backend.belatro.pojo.gamelogic.enums.GameState;
 import backend.belatro.pojo.gamelogic.enums.Rank;
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.*;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,7 +58,7 @@ public class BelotGame {
     @Getter
     private GameState gameState = GameState.INITIALIZED;
 
-    @Getter
+    @JsonIdentityReference(alwaysAsId = true)
     private Player trumpCaller;
 
     @Getter
