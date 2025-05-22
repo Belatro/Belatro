@@ -47,34 +47,29 @@ public class GameSocketController {
         fanOutGameState(evt.getGameId());
     }
 
-    public void fanOutGameState(String gameId) {
-        BelotGame game = svc.get(gameId);
-        if (game == null) {
-            System.err.println("Cannot fan out game state: Game not found with ID - " + gameId);
-            return;
-        }
-
-
-        System.out.println("Fanning out state for game: " + gameId + " in state " + game.getGameState());
+    private void fanOutGameState(BelotGame game) {
+        String gameId = game.getGameId();
 
         PublicGameView pub = svc.toPublicView(game);
         bus.convertAndSend("/topic/games/" + gameId, pub);
-//        System.out.println("Sent public view to /topic/games/" + gameId);
 
-
+        // private view for each player
         game.getTurnOrder().forEach(player -> {
-                    // CRITICAL: Ensure player.getId() here returns the username (e.g., "Alice")
-                    String playerId = player.getId(); // This must be the username
-//                    System.out.println("Sending private view to player: " + playerId + " for game: " + gameId);
-                    PrivateGameView prv = svc.toPrivateView(game, player);
-//                    System.out.println("Private view: " + prv);
-                    bus.convertAndSendToUser(
-                            playerId,
-                            "/queue/games/" + gameId,
-                            prv
-                    );
-                    System.out.println("Sent private view to user " + playerId + " at /queue/games/" + gameId);
-                });
+            PrivateGameView prv = svc.toPrivateView(game, player);
+            bus.convertAndSendToUser(
+                    player.getId(),                // username
+                    "/queue/games/" + gameId,
+                    prv
+            );
+        });
+    }
+    public void fanOutGameState(String gameId) {
+        BelotGame game = svc.get(gameId);   // fetch once
+        if (game != null) {
+            fanOutGameState(game);          // reuse the helper above
+        } else {
+            System.err.println("Cannot fan out game state: Game not found with ID " + gameId);
+        }
     }
 
 
@@ -82,7 +77,7 @@ public class GameSocketController {
     public void play(@DestinationVariable String id, PlayCardMsg msg) {
 
         BelotGame game = svc.playCard(id, msg.playerId(), msg.card(), msg.declareBela());
-
+        svc.save(game);
         matchService.recordMove(id,
                 MoveType.PLAY_CARD,
                 Map.of("playerId", msg.playerId(),
@@ -90,7 +85,7 @@ public class GameSocketController {
                         "declareBela", msg.declareBela()),
                 0.0);
 
-        fanOutGameState(id);
+        fanOutGameState(game);
     }
 
     @MessageMapping("/games/{id}/bid")
@@ -101,7 +96,7 @@ public class GameSocketController {
                 : Bid.callTrump(new Player(msg.playerId()), msg.trump());
 
         BelotGame game = svc.placeBid(id, bid);
-
+        svc.save(game);
         Map<String,Object> payload = msg.pass()
                 ? Map.of("playerId", msg.playerId(),
                 "pass",     true)
@@ -111,7 +106,7 @@ public class GameSocketController {
 
         matchService.recordMove(id, MoveType.BID, payload, 0.0);
 
-        fanOutGameState(id);
+        fanOutGameState(game);
     }
 
     @MessageMapping("/games/{id}/refresh")

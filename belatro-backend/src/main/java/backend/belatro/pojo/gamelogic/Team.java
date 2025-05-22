@@ -11,6 +11,7 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Team {
     private final List<Player> players;
+    @JsonProperty("Score")
     private int score;
 
     @JsonCreator

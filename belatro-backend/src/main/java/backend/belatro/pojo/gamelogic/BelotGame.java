@@ -66,7 +66,9 @@ public class BelotGame {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BelotGame.class);
 
+    @JsonProperty
     private int teamAHandPoints = 0;
+    @JsonProperty
     private int teamBHandPoints = 0;
 
     private final Map<String, Boolean> belaAlreadyDeclared = new HashMap<>();
@@ -86,8 +88,11 @@ public class BelotGame {
         this.teamA = Objects.requireNonNull(teamA, "Team A cannot be null");
         this.teamB = Objects.requireNonNull(teamB, "Team B cannot be null");
 
-        turnOrder.addAll(teamA.getPlayers());
-        turnOrder.addAll(teamB.getPlayers());
+
+        for (int i = 0; i < teamA.getPlayers().size(); i++) {
+            turnOrder.add(teamA.getPlayers().get(i));
+            turnOrder.add(teamB.getPlayers().get(i));
+        }
     }
 
     public void selectDealer() {
