@@ -1,7 +1,9 @@
 package backend.belatro.events;
 
+import lombok.Getter;
 import org.springframework.context.ApplicationEvent;
 
+@Getter
 public class GameStartedEvent extends ApplicationEvent {
     private final String gameId;
 
@@ -10,7 +12,4 @@ public class GameStartedEvent extends ApplicationEvent {
         this.gameId = gameId;
     }
 
-    public String getGameId() {
-        return gameId;
-    }
 }

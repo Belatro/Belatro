@@ -147,7 +147,7 @@
     const PLAYERS = ['Alice', 'Bob', 'Carol', 'Dave'];
     const TEAM_A  = ['Alice', 'Carol'];
     const TEAM_B  = ['Bob', 'Dave'];
-    // const ALL_TRUMPS = ['HERC', 'KARO', 'TREF', 'PIK', 'ALL_TRUMPS', 'NO_TRUMPS']; // Example trumps - UNCOMMENT IF NEEDED
+    const ALL_TRUMPS = ['HERC', 'KARO', 'TREF', 'PIK', 'ALL_TRUMPS', 'NO_TRUMPS']; // Example trumps - UNCOMMENT IF NEEDED
     let jwtToken = localStorage.getItem('jwtToken');
     let currentUser = JSON.parse(localStorage.getItem('currentUser')); // ADDED: load current user
 
@@ -164,6 +164,8 @@
         "Carol": { id: "6824a3d34b3df272cf8e37b0", username: "LOLOLOL1" },
         "Dave":  { id: "68249feb4b3df272cf8e37af",  username: "YOYOY1234" }
     };
+
+    const USERNAME_TO_DISPLAY = {};
 
     const TEAM_A_ID = "A";
     const TEAM_B_ID = "B";
@@ -519,19 +521,19 @@
             console.log('JWT Token:', jwtToken);       // 3. What is jwtToken?
 
             if (!currentUser || !currentUser.id) {
-                lobbyMessagesEl.textContent = '⚠️ Log in first and ensure user details are loaded. (Logged in createLobbyBtn)';
+                createLobbyStatusEl.textContent = '⚠️ Log in first and ensure user details are loaded. (Logged in createLobbyBtn)';
                 console.error('Create Lobby: currentUser is not set or has no id.', currentUser); // 4. Did it fail this check?
                 return;
             }
 
-            const lobbyName = lobbyNameInput.value;
+            const lobbyName = lobbyNameInputEl.value;
 // Corrected line
             const isLobbyPrivate = privateLobbyCheckboxEl.checked;
             console.log('Lobby Name:', lobbyName);       // 5. Lobby name value
             console.log('Is Private:', isLobbyPrivate);       // 6. Is private value
 
             if (!lobbyName.trim()) {
-                lobbyMessagesEl.textContent = '⚠️ Lobby name cannot be empty.';
+                createLobbyStatusEl.textContent = '⚠️ Lobby name cannot be empty.';
                 console.warn('Create Lobby: Lobby name is empty.'); // 7. Did it fail this check?
                 return;
             }
@@ -564,16 +566,16 @@
 
                 if (response.ok) {
                     const createdLobby = await response.json();
-                    lobbyMessagesEl.textContent = `✅ Lobby "${createdLobby.name}" created! ID: ${createdLobby.id}`;
+                    createLobbyStatusEl.textContent = `✅ Lobby "${createdLobby.name}" created! ID: ${createdLobby.id}`;
                     console.log('Lobby created:', createdLobby);
                     // Optionally, clear inputs or navigate
                 } else {
                     const errorBody = await response.text(); // Get text in case it's not JSON
-                    lobbyMessagesEl.textContent = `⚠️ Error creating lobby: ${response.status} ${response.statusText}. ${errorBody}`;
+                    createLobbyStatusEl.textContent = `⚠️ Error creating lobby: ${response.status} ${response.statusText}. ${errorBody}`;
                     console.error('Error creating lobby:', response.status, response.statusText, errorBody);
                 }
             } catch (error) {
-                lobbyMessagesEl.textContent = '⚠️ Network or other error creating lobby.';
+                createLobbyStatusEl.textContent = '⚠️ Network or other error creating lobby.';
                 console.error('Network or other error creating lobby:', error); // 11. Catch any other errors
             }
         };
@@ -695,137 +697,107 @@
     }
 
 
-    function connectPlayer(playerDisplayName, matchId) { // Changed 'playerName' to 'playerDisplayName'
-        let actualUsername;
+    /*********************************************************************/
+    /* 1.  connectPlayer ­– unchanged except for the final call          */
+    /*********************************************************************/
+    function connectPlayer(displayName, matchId) {
+        let backendUsername;
 
-        // Determine the actual database username
-        if (playerDisplayName === 'Alice') {
-            if (currentUser && currentUser.username) {
-                actualUsername = currentUser.username;
-            } else {
-                console.error(`Current user (Alice) details or username not found in localStorage. Cannot connect Alice.`);
-                const panel = document.querySelector(`#${playerDisplayName} .pub`);
-                if (panel) panel.textContent = `Error: Alice's user data not found.`;
-                return;
-            }
-        } else if (testUsers[playerDisplayName] && testUsers[playerDisplayName].username) {
-            actualUsername = testUsers[playerDisplayName].username;
+        if (displayName === 'Alice') {
+            backendUsername = currentUser?.username;
         } else {
-            console.error(`No database username found for display name: ${playerDisplayName}. Cannot connect.`);
-            const panel = document.querySelector(`#${playerDisplayName} .pub`);
-            if (panel) panel.textContent = `Error: Config for ${playerDisplayName} missing.`;
+            backendUsername = testUsers[displayName]?.username;
+        }
+        if (!backendUsername) {
+            console.error('No backend username for', displayName);
             return;
         }
 
-        // Disconnect previous connection for this player (identified by actualUsername) if any
-        const existingSocket = playerSockets[actualUsername];
-        if (existingSocket && existingSocket.connected) {
-            try {
-                existingSocket.disconnect(() => {
-                    console.log(`Disconnected previous session for ${actualUsername} (display name: ${playerDisplayName}).`);
-                    proceedWithConnection(actualUsername, matchId, playerDisplayName); // Pass both for full context if needed later
-                });
-            } catch (e) {
-                console.warn(`Error disconnecting ${actualUsername}: ${e}. Proceeding with new connection.`);
-                proceedWithConnection(actualUsername, matchId, playerDisplayName);
-            }
-        } else {
-            proceedWithConnection(actualUsername, matchId, playerDisplayName);
-        }
+        USERNAME_TO_DISPLAY[backendUsername] = displayName;
+        proceedWithConnection(backendUsername, matchId, displayName);
     }
 
 
-    function proceedWithConnection(playerName, matchId) {
-        const playerPanelPub = document.querySelector(`#${playerName} .pub`);
-        const playerPanelPrv = document.querySelector(`#${playerName} .prv`);
+    /*********************************************************************/
+    /* 2.  proceedWithConnection – clean, no dangling code               */
+    /*********************************************************************/
+    function proceedWithConnection(backendUsername, matchId, displayName) {
 
-        if (playerPanelPub) playerPanelPub.textContent = `Connecting ${playerName} to match ${matchId}...`;
+        /* find the <pre> elements that belong to this visual panel       */
+        const panelPub = document.querySelector(`#${displayName} .pub`);
+        const panelPrv = document.querySelector(`#${displayName} .prv`);
 
-        const socket = new SockJS(`${apiBase}/ws?user=${encodeURIComponent(playerName)}`);
-        const client = webstomp.over(socket);
-        client.debug = function(str) {
-            console.log(`[${playerName} WS DEBUG] ${str}`);
-        };
+        /* create STOMP client                                            */
+        const socket = new SockJS(`${apiBase}/ws?user=${backendUsername}`);
+        const client = webstomp.over(socket, { debug: true });
 
-        const headers = {
-            'Authorization': 'Bearer ' + jwtToken,
-            // Send player name and match ID, useful for backend to route messages
-            // These might be sent as part of STOMP subscribe/send frames too, depending on backend
-            'X-Player-Name': playerName,
-            'X-Match-ID': matchId
-        };
-        console.log(`[${playerName}] Attempting WS connection to ${matchId} with token:`, jwtToken);
+        client.connect(
+            { Authorization : 'Bearer ' + jwtToken,
+                'X-Player-Name': backendUsername,
+                'X-Match-ID'   : matchId },
 
-        client.connect(headers, (frame) => {
-            console.log(`${playerName} connected to Match ${matchId}:`, frame);
-            if (playerPanelPub) playerPanelPub.textContent = 'Connected. Waiting for game state...';
-            playerSockets[playerName] = client; // Store the client
+            /* onConnect ------------------------------------------------ */
+            frame => {
+                /*****  store the client so you can send later  *********/
+                playerSockets[backendUsername] = client;
 
-            // Subscribe to public game events for this match
-            client.subscribe(`/topic/games/${matchId}`, (message) => {
-                try {
-                    console.log(`[${playerName}] Public message received on /topic/games/${matchId}. Raw:`, message); // ADD THIS
+                /* public game state */
+                client.subscribe(
+                    `/topic/games/${matchId}`,
+                    msg => panelPub  && (panelPub.textContent  = pretty(msg.body))
+                );
 
-                    const gameState = JSON.parse(message.body);
-                    if (playerPanelPub) playerPanelPub.textContent = JSON.stringify(gameState, null, 2);
-                    // Potentially update more specific UI parts based on gameState
-                } catch (e) {
-                    console.error("Error parsing public message:", e, message.body);
-                    if (playerPanelPub) playerPanelPub.textContent = "Error processing public event.";
-                }
-            }, headers); // Pass headers for subscription if needed by backend/broker
+                /* private view for this user */
+                client.subscribe(
+                    `/user/queue/games/${matchId}`,
+                    msg => {
+                        if (panelPrv) panelPrv.textContent = pretty(msg.body);
 
-            // Subscribe to private messages for this player in this match
-            // The path /user/queue/private or similar depends on your Spring Security & STOMP config
-            // It often uses the authenticated user's principal name.
-            // Or, if your backend maps it differently (e.g., using X-Player-Name):
-            client.subscribe(`/user/queue/games/${matchId}`, (message) => { // Or specific path like /user/queue/private/${playerName}
-                try {
-                    console.log(`[${playerName} Private message received on /user/queue/games/${matchId}. Raw:`, message); // ADD THIS
+                        /* OPTIONAL – show action buttons for this player */
+                        const prv = JSON.parse(msg.body);
+                        renderPlayerActions(
+                            displayName,        // “Alice” | “Bob” | …
+                            backendUsername,    // real username you logged in with
+                            prv,
+                            matchId
+                        );
+                    }
+                );
+                client.send(`/app/games/${matchId}/refresh`, {}, '');
+            },
 
-                    const privateState = JSON.parse(message.body);
-                    if (playerPanelPrv) playerPanelPrv.textContent = JSON.stringify(privateState, null, 2);
-                    renderPlayerActions(playerName, privateState, matchId);
-                } catch (e) {
-                    console.error("Error parsing private message:", e, message.body);
-                    if (playerPanelPrv) playerPanelPrv.textContent = "Error processing private event.";
-                }
-            }, headers);
-
-            // Example: Announce join or request initial state
-            // client.send(`/app/match/${matchId}/join`, JSON.stringify({ player: playerName, id: currentUser.id }), headers);
-
-        }, (error) => {
-            console.error(`${playerName} connection error to Match ${matchId}:`, error);
-            if (playerPanelPub) playerPanelPub.textContent = `Connection Error for ${playerName}. Check console.`;
-            // Clean up failed connection attempt
-            if (playerSockets[playerName]) {
-                delete playerSockets[playerName];
-            }
-        });
+            /* onError -------------------------------------------------- */
+            err => console.error('STOMP error for', displayName, err)
+        );
     }
 
-    function sendPlayerAction(playerName, actionType, payload) {
+
+    function sendPlayerAction(backendUsername, action, body) {
         const matchId = gameIdInputEl.value.trim();
-        if (!matchId) {
-            console.warn("Cannot send action: No Match ID selected.");
-            alert("No Match ID selected for action.");
-            return;
-        }
-        if (playerSockets[playerName] && playerSockets[playerName].connected) {
-            const destination = `/app/match/${matchId}/${actionType}`; // e.g., /app/match/match123/playCard
-            const headers = {
-                'Authorization': 'Bearer ' + jwtToken,
-                'X-Player-Name': playerName, // Good practice to include context
-                'X-Match-ID': matchId
-            };
-            playerSockets[playerName].send(destination, JSON.stringify(payload), headers);
-            console.log(`${playerName} sent to ${destination}:`, payload);
-        } else {
-            console.warn(`${playerName} is not connected or STOMP client not found. Cannot send ${actionType}.`);
-            alert(`${playerName} is not connected. Action not sent.`);
-        }
+        if (!matchId) { alert('No Match ID'); return; }
+
+        const client = playerSockets[backendUsername];
+        if (!client || !client.connected) { alert(`${backendUsername} not connected`); return; }
+
+        /* map our semantic action → controller mapping segment */
+        const path = action === 'playCard' ? 'play'
+            : action === 'makeBid'  ? 'bid'
+                :                        action;  // fallback
+
+        const dest = `/app/games/${matchId}/${path}`;
+
+        /* always include playerId in the payload */
+        const payload = JSON.stringify({ playerId: backendUsername, ...body });
+
+        client.send(dest, payload, {
+            Authorization : 'Bearer ' + jwtToken,
+            'X-Player-Name': backendUsername,
+            'X-Match-ID'   : matchId
+        });
+
+        console.log(`${backendUsername} → ${dest}`, payload);
     }
+
     // Initialize the display elements
     if (lobbyIdInputEl) {
         manageLobbyIdDisplayEl.textContent = lobbyIdInputEl.value ? lobbyIdInputEl.value : "N/A";
@@ -838,44 +810,83 @@
     clearLobbyDisplay();
 
 
-    function renderPlayerActions(playerName, privateState, matchId) {
-        const cardsDiv = document.querySelector(`#${playerName} .cards`);
-        const bidsDiv = document.querySelector(`#${playerName} .bids`);
+    function renderPlayerActions(displayName, backendUsername, privateState, matchId) {
+        const panelId  = displayName;
+        const cardsDiv = document.querySelector(`#${panelId} .cards`);
+        const bidsDiv  = document.querySelector(`#${panelId} .bids`);
         if (!cardsDiv || !bidsDiv) return;
 
-        cardsDiv.innerHTML = ''; // Clear previous
-        bidsDiv.innerHTML = '';   // Clear previous
+        cardsDiv.innerHTML = '';
+        bidsDiv.innerHTML  = '';
 
-        if (privateState.turn && privateState.turn.player === playerName) {
-            // Example: if privateState.hand contains playable cards
-            if (privateState.hand && Array.isArray(privateState.hand)) {
-                privateState.hand.forEach(card => { // Assuming card is an object { suit, rank }
-                    if (card && card.rank && card.suit) {
-                        const btn = document.createElement('button');
-                        btn.textContent = `${card.rank}${card.suit.charAt(0)}`; // e.g., AS, KH
-                        btn.onclick = () => sendPlayerAction(playerName, 'playCard', { card });
-                        cardsDiv.appendChild(btn);
-                    }
-                });
-            }
-            // Example: if privateState.availableBids contains possible bids
-            if (privateState.availableBids && Array.isArray(privateState.availableBids)) {
-                privateState.availableBids.forEach(bid => { // Assuming bid is a string or object
-                    const btn = document.createElement('button');
-                    btn.textContent = typeof bid === 'object' ? bid.name : bid;
-                    btn.onclick = () => sendPlayerAction(playerName, 'makeBid', { bid });
-                    bidsDiv.appendChild(btn);
-                });
-            }
-        } else {
-            cardsDiv.textContent = "Not your turn or no actions available.";
-            bidsDiv.textContent = "";
+
+
+        /* ---------- HAND ---------- */
+        /* Always paint the cards … */
+        if (Array.isArray(privateState.hand)) {
+            privateState.hand.forEach(card => {
+                const suit = card.boja || card.suit;
+                if (!(card && card.rank && suit)) return;
+
+                const suitGlyph = { HERC:'♥', KARA:'♦', PIK:'♠', TREF:'♣' }[suit] ?? suit[0];
+                const btn = document.createElement('button');
+                btn.textContent = `${card.rank} ${suitGlyph}`;
+
+                /* …but only wire the click handler when it’s this player’s turn */
+                if (privateState.yourTurn) {
+                    btn.onclick = () => sendPlayerAction(
+                        backendUsername,
+                        'playCard',
+                        { card }
+                    );
+                } else {
+                    btn.disabled = true;          // optional: grey-out when not your turn
+                }
+
+                cardsDiv.appendChild(btn);
+            });
         }
+
+        /* ---------- BIDDING BUTTONS ---------- */
+        if (privateState.yourTurn && privateState.publicPart.gameState === 'BIDDING') {
+            const passBtn = document.createElement('button');
+            passBtn.textContent = 'PASS';
+            passBtn.onclick = () => sendPlayerAction(
+                backendUsername,
+                'makeBid',
+                { playerId: backendUsername, pass: true }
+            );
+            bidsDiv.appendChild(passBtn);
+
+            const TRUMPS = ['HERC','KARA','TREF','PIK','ALL_TRUMPS','NO_TRUMPS'];
+            TRUMPS.forEach(trump => {
+                const b = document.createElement('button');
+                b.textContent = trump;
+                b.onclick = () => sendPlayerAction(
+                    backendUsername,
+                    'makeBid',
+                    { playerId: backendUsername, pass: false, trump }
+                );
+                bidsDiv.appendChild(b);
+            });
+        }
+
+        /* Fallback text */
+        if (!cardsDiv.children.length) cardsDiv.textContent = 'Not your turn or no actions.';
+        if (!bidsDiv.children.length)  bidsDiv.textContent  = 'Bidding Actions:';
     }
+
+
+
+
 
     // Initial UI setup for password field if checkbox is present
     if (privateLobbyCheckboxEl) {
         privateLobbyCheckboxEl.dispatchEvent(new Event('change'));
+    }
+    function pretty(json) {
+        try { return JSON.stringify(JSON.parse(json), null, 2); }
+        catch { return json; }
     }
 
 </script>

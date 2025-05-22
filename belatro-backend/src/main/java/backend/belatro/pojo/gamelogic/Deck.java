@@ -23,13 +23,16 @@ public class Deck {
         Collections.shuffle(cards);
     }
 
-    public List<Card> deal(int count) {
-        if (cards.size() < count) {
-            throw new IllegalStateException("Not enough cards to deal");
+    public List<Card> deal(int n) {
+        if (n <= 0 || cards.isEmpty()) {
+            return Collections.emptyList();
         }
-        List<Card> hand = new ArrayList<>(cards.subList(0, count));
-        cards.subList(0, count).clear();
-        return hand;
+        int howMany = Math.min(n, cards.size());
+
+        List<Card> dealt = new ArrayList<>(cards.subList(0, howMany));
+
+        cards.subList(0, howMany).clear();
+        return dealt;
     }
 
     /**

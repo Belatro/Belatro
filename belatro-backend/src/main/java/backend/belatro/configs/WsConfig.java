@@ -45,16 +45,23 @@ public class WsConfig implements WebSocketMessageBrokerConfigurer {
             public boolean beforeHandshake(ServerHttpRequest request,
                                            ServerHttpResponse response,
                                            WebSocketHandler wsHandler,
-                                           Map<String, Object> attributes) {
-                // parse ?user=Alice out of the URL
-                String q = Optional.ofNullable(request.getURI().getQuery())
-                        .orElse("");
-                String user = Arrays.stream(q.split("&"))
+                                           Map<String,Object> attributes) {
+
+                // keep current query-param code
+                String qp = Optional.ofNullable(request.getURI().getQuery()).orElse("");
+                String user = Arrays.stream(qp.split("&"))
                         .map(s -> s.split("="))
-                        .filter(p -> p.length==2 && p[0].equals("user"))
+                        .filter(p -> p.length == 2 && p[0].equals("user"))
                         .map(p -> p[1])
                         .findFirst()
-                        .orElseThrow();
+                        // NEW: if ?user not present, fall back to header
+                        .orElseGet(() ->
+                                request.getHeaders()
+                                        .getFirst("X-Player-Name"));
+
+                if (user == null || user.isBlank()) {
+                    return false;          // refuse handshake – no identity
+                }
                 attributes.put("user", user);
                 return true;
             }

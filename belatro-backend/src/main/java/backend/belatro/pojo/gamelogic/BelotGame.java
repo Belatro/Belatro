@@ -32,6 +32,7 @@ public class BelotGame {
     @Getter
     private final List<Player> turnOrder = new ArrayList<>();
 
+    @JsonProperty
     private Deck deck;
 
     @Getter
@@ -300,23 +301,19 @@ public class BelotGame {
 
 
     /**
-     * Deals the remaining cards to players after trump is called.
+     * Deals the remaining two cards per player (6 → 8) after trump is chosen.
+     * Uses the *real* deck and then clears the talon list.
      */
     private void dealRemainingCards() {
-        // Put the talon back into a temporary deck to deal
-        Deck tempDeck = new Deck();
-        tempDeck.cards.clear();  // Empty the fresh deck
-        // Add talon cards to temp deck
-        tempDeck.cards.addAll(talon);
 
-        // Deal 2 cards to each player from the talon
-        for (Player player : turnOrder) {
-            List<Card> currentHand = new ArrayList<>(player.getHand());
-            currentHand.addAll(tempDeck.deal(2));
-            player.setHand(currentHand);
+        // put the two talon cards back on top so they’re dealt first
+        deck.cards.addAll(0, talon);   // package-private field → same class
+        talon.clear();
+
+        // give everyone cards until he/she holds eight
+        for (Player p : turnOrder) {
+            p.getHand().addAll(deck.deal(2));
         }
-
-        talon.clear();  // Talon is now empty
     }
 
 

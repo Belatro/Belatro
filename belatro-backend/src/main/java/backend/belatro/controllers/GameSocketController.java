@@ -6,6 +6,7 @@ import backend.belatro.dtos.PrivateGameView;
 import backend.belatro.dtos.PublicGameView;
 import backend.belatro.enums.MoveType;
 import backend.belatro.events.GameStartedEvent;
+import backend.belatro.events.GameStateChangedEvent;
 import backend.belatro.pojo.gamelogic.BelotGame;
 import backend.belatro.pojo.gamelogic.Bid;
 import backend.belatro.pojo.gamelogic.Card;
@@ -40,6 +41,10 @@ public class GameSocketController {
     public void handleGameStartedEvent(GameStartedEvent event) {
         System.out.println("Received GameStartedEvent for gameId: " + event.getGameId()); // For logging
         fanOutGameState(event.getGameId());
+    }
+    @EventListener
+    public void onGameStateChanged(GameStateChangedEvent evt) {
+        fanOutGameState(evt.getGameId());
     }
 
     public void fanOutGameState(String gameId) {
@@ -109,6 +114,19 @@ public class GameSocketController {
         matchService.recordMove(id, MoveType.BID, payload, 0.0);
 
         fanOutGameState(id);
+    }
+
+    @MessageMapping("/games/{id}/refresh")
+    public void refresh(@DestinationVariable String id, Principal p) {
+        BelotGame g = svc.get(id);
+        // ① public
+        bus.convertAndSend("/topic/games/" + id, svc.toPublicView(g));
+
+        // ② private (only back to the caller)
+        Player me = g.findPlayerById(p.getName());
+        bus.convertAndSendToUser(
+                p.getName(), "/queue/games/" + id,
+                svc.toPrivateView(g, me));
     }
     // Sends public game state when a client subscribes to the public topic
     @SubscribeMapping("/topic/games/{gameId}")

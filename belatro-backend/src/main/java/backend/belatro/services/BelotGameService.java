@@ -4,7 +4,9 @@ import backend.belatro.dtos.BidDTO;
 import backend.belatro.dtos.PrivateGameView;
 import backend.belatro.dtos.PublicGameView;
 import backend.belatro.events.GameStartedEvent;
+import backend.belatro.events.GameStateChangedEvent;
 import backend.belatro.pojo.gamelogic.*;
+import backend.belatro.pojo.gamelogic.enums.GameState;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -71,6 +73,7 @@ public class BelotGameService {
     public void save(BelotGame game) {
         redis.opsForValue()
                 .set(KEY_PREFIX + game.getGameId(), game);
+        eventPublisher.publishEvent(new GameStateChangedEvent(game.getGameId()));
     }
 
     private BelotGame getOrThrow(String gameId) {
@@ -101,9 +104,17 @@ public class BelotGameService {
     }
 
     public PrivateGameView toPrivateView(BelotGame g, Player p) {
+
+        boolean yourTurn =
+                g.getGameState() == GameState.BIDDING
+                        ? g.getCurrentLead().getId().equals(p.getId())
+                        : g.getCurrentPlayer() != null
+                        && g.getCurrentPlayer().getId().equals(p.getId());
+
+
         return new PrivateGameView(
                 toPublicView(g),
                 p.getHand(),
-                g.getCurrentPlayer().equals(p));
+                yourTurn);
     }
 }

@@ -1,0 +1,5 @@
+/gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
+# Hide any .env file, no matter where it is
+**/*.env    -diff
