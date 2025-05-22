@@ -313,7 +313,9 @@ public class BelotGame {
         // give everyone cards until he/she holds eight
         for (Player p : turnOrder) {
             p.getHand().addAll(deck.deal(2));
+            LOGGER.warn("{} now holds {}", p.getId(), p.getHand().size());
         }
+        LOGGER.warn("### entering dealRemainingCards() ###");
     }
 
 

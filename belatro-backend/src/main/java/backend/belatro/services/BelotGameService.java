@@ -7,6 +7,8 @@ import backend.belatro.events.GameStartedEvent;
 import backend.belatro.events.GameStateChangedEvent;
 import backend.belatro.pojo.gamelogic.*;
 import backend.belatro.pojo.gamelogic.enums.GameState;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -18,7 +20,7 @@ import java.util.List;
 public class BelotGameService {
 
     private static final String KEY_PREFIX = "belot:game:";
-
+    private static final Logger LOGGER = LoggerFactory.getLogger(BelotGameService.class);
     private final RedisTemplate<String, BelotGame> redis;
     private final ApplicationEventPublisher eventPublisher; // Inject publisher
 
@@ -104,7 +106,7 @@ public class BelotGameService {
     }
 
     public PrivateGameView toPrivateView(BelotGame g, Player p) {
-
+        LOGGER.warn("DTO build – {} raw hand size = {}", p.getId(), p.getHand().size());
         boolean yourTurn =
                 g.getGameState() == GameState.BIDDING
                         ? g.getCurrentLead().getId().equals(p.getId())
