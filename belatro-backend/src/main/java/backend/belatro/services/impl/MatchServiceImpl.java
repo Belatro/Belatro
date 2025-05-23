@@ -1,29 +1,34 @@
 package backend.belatro.services.impl;
 
-import backend.belatro.dtos.LobbyDTO;
-import backend.belatro.dtos.MatchDTO;
-import backend.belatro.dtos.UserUpdateDTO;
+import backend.belatro.dtos.*;
+import backend.belatro.enums.MoveType;
 import backend.belatro.models.Lobbies;
 import backend.belatro.models.Match;
+import backend.belatro.models.MatchMove;
 import backend.belatro.models.User;
+import backend.belatro.repos.MatchMoveRepo;
 import backend.belatro.repos.MatchRepo;
 import backend.belatro.services.IMatchService;
 import backend.belatro.util.MappingUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import java.util.Collections;
-import java.util.List;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 public class MatchServiceImpl implements IMatchService {
 
     private final MatchRepo matchRepo;
+    private final MatchMoveRepo matchMoveRepo;
 
     @Autowired
-    public MatchServiceImpl(MatchRepo matchRepo) {
+    public MatchServiceImpl(MatchRepo matchRepo, MatchMoveRepo matchMoveRepo) {
         this.matchRepo = matchRepo;
+        this.matchMoveRepo = matchMoveRepo;
     }
 
     @Override
@@ -66,12 +71,98 @@ public class MatchServiceImpl implements IMatchService {
         matchRepo.deleteById(id);
     }
 
+    @Transactional
+    public void recordMove(String matchId,
+                           MoveType type,                     // e.g. "PLAY_CARD", "BID"
+                           Map<String, Object> payload,     // arbitrary JSON-ish info
+                           double evaluation) {
+
+        int nextNo = (int) matchMoveRepo.countByMatchId(matchId) + 1;
+
+        // 2) Persist
+        MatchMove move = MatchMove.builder()
+                .matchId   (matchId)
+                .number    (nextNo)           // globally ordered within the match
+                .type      (type)
+                .payload   (payload)
+                .evaluation(evaluation)
+                .ts        (Instant.now())
+                .build();
+
+        matchMoveRepo.save(move);
+    }
+
+    @Override
+    public List<HandDTO> getStructuredMoves(String matchId) {
+
+        List<MatchMove> movesFlat = matchMoveRepo.findByMatchIdOrderByNumber(matchId);
+
+        // handNo ‑> trickNo ‑> moves
+        Map<Integer, Map<Integer, List<MatchMove>>> grouped =
+                movesFlat.stream()
+                        .collect(Collectors.groupingBy(
+                                mv -> (Integer) mv.getPayload().getOrDefault("handNo", 0),
+                                LinkedHashMap::new,
+                                Collectors.groupingBy(
+                                        mv -> (Integer) mv.getPayload().getOrDefault("trickNo", 0),
+                                        LinkedHashMap::new,
+                                        Collectors.toList()
+                                )));
+
+        return grouped.entrySet().stream()
+                .map(hand -> {
+                    int handNo = hand.getKey();
+                    List<TrickDTO> tricks = hand.getValue().entrySet().stream()
+                            .map(trick -> {
+                                int trickNo = trick.getKey();
+                                List<MoveDTO> moves = trick.getValue().stream()
+                                        .sorted(Comparator.comparingInt(MatchMove::getNumber))
+                                        .map(mm -> new MoveDTO(
+                                                mm.getNumber(),
+                                                (String) mm.getPayload().get("playerId"),
+                                                (String) mm.getPayload().get("card")))
+                                        .toList();
+
+                                String trump = trick.getValue().stream()
+                                        .map(mm -> (String) mm.getPayload().get("trump"))
+                                        .filter(Objects::nonNull)
+                                        .findFirst()
+                                        .orElse(null);
+
+                                return new TrickDTO(trickNo, trump, moves);
+                            })
+                            .toList();
+
+                    return new HandDTO(handNo, tricks);
+                })
+                .toList();
+    }
+
+    @Override
+    public List<MoveDTO> getMoves(String matchId) {
+        return matchMoveRepo.findByMatchIdOrderByNumber(matchId)
+                .stream()
+                .map(this::toMoveDTO)
+                .toList();
+    }
+
+    private MoveDTO toMoveDTO(MatchMove mm) {
+        return new MoveDTO(
+                mm.getNumber(),
+                (String) mm.getPayload().get("playerId"),
+                (String) mm.getPayload().get("card")
+        );
+    }
+
+
+
+
+
     private Match toEntity(MatchDTO dto) {
         System.out.println("Converting MatchDTO to Match. DTO id: " + dto.getId());
         Match match = new Match();
         match.setId(dto.getId());
         match.setGameMode(dto.getGameMode());
-        match.setMoves(dto.getMoves());
         match.setResult(dto.getResult());
         match.setStartTime(dto.getStartTime());
         match.setEndTime(dto.getEndTime());
@@ -116,7 +207,6 @@ public class MatchServiceImpl implements IMatchService {
         MatchDTO dto = new MatchDTO();
         dto.setId(match.getId());
         dto.setGameMode(match.getGameMode());
-        dto.setMoves(match.getMoves());
         dto.setResult(match.getResult());
         dto.setStartTime(match.getStartTime());
         dto.setEndTime(match.getEndTime());

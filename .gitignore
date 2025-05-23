@@ -1,0 +1,83 @@
+HELP.md
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+.env
+
+.DS_Store
+
+################################################################################
+## Gradle build/cache artefacts  (Gradle 7.5+)                                ##
+################################################################################
+# Native file-watcher probe
+file-system.probe
+
+# Task history & file-hash caches
+executionHistory.bin
+executionHistory.lock
+fileHashes.bin
+fileHashes.lock
+
+# Clean-up log produced by Gradle ≥ 8
+buildOutputCleanup.log
+
+# Generic catch-alls — comment out if you need *.bin or *.lock for other reasons
+*.bin
+*.lock
+
+
+# ─── Backend build & test artefacts ─────────────────────────────────────────
+# Gradle build outputs
+belatro-backend/build/
+
+# Node dependencies
+belatro-backend/node_modules/
+
+# Test results, dumps, generated docs
+belatro-backend/Test Results*.html
+belatro-backend/redoc-static.html
+belatro-backend/*.txt
+belatro-backend/java_pid*.hprof
+
+
+# If you don’t want to commit your Node lockfile here, ignore it:
+# (or conversely, remove this line if you *do* want the lockfile in Git)
+belatro-backend/package-lock.json
+
+# Qodana reports & configs (optional)
+belatro-backend/qodana.sarif.json
+belatro-backend/qodana.yaml
