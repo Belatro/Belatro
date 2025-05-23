@@ -41,6 +41,11 @@ public class LobbyController {
         LobbyDTO lobby = lobbyService.getLobby(lobbyId);
         return ResponseEntity.ok(lobby);
     }
+    @GetMapping("/open")
+    public ResponseEntity<Iterable<LobbyDTO>> getAllOpenLobbies() {
+        Iterable<LobbyDTO> lobbies = lobbyService.getAllOpenLobbies();
+        return ResponseEntity.ok(lobbies);
+    }
 
     @PutMapping
     public ResponseEntity<LobbyDTO> updateLobby(@RequestBody LobbyDTO lobbyDTO) {
@@ -53,6 +58,8 @@ public class LobbyController {
         lobbyService.deleteLobby(lobbyId);
         return ResponseEntity.noContent().build();
     }
+
+
 
     @PostMapping("/switchTeam")
     public ResponseEntity<LobbyDTO> switchTeam(@RequestBody TeamSwitchRequestDTO switchRequest) {

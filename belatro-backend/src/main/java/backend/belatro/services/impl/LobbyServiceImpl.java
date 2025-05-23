@@ -52,6 +52,14 @@ public class LobbyServiceImpl implements LobbyService {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    public List<LobbyDTO> getAllOpenLobbies() {
+        return lobbyRepo.findAllByStatus(lobbyStatus.WAITING)
+                .stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
 
     @Override
     public LobbyDTO createLobby(LobbyDTO lobbyDTO) {

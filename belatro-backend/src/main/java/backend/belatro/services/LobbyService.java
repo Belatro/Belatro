@@ -16,5 +16,6 @@ public interface LobbyService {
     LobbyDTO switchTeam(TeamSwitchRequestDTO switchRequest);
     MatchDTO startMatch(String lobbyId);
     List<LobbyDTO> getAllLobbies();
+    List<LobbyDTO> getAllOpenLobbies();
 
 }
