@@ -6,8 +6,16 @@ import backend.belatro.dtos.MatchDTO;
 import backend.belatro.dtos.TeamSwitchRequestDTO;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface LobbyService {
+    LobbyDTO kickPlayer(String lobbyId,
+                        String requesterUsername,
+                        String usernameToKick);
+
+    Optional<LobbyDTO> leaveLobby(String lobbyId,
+                                  String username);
+
     LobbyDTO createLobby(LobbyDTO lobbyDTO);
     LobbyDTO getLobby(String lobbyId);
     LobbyDTO updateLobby(LobbyDTO lobbyDTO);

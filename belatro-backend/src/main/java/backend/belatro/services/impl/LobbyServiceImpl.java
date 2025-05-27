@@ -23,9 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -59,6 +57,67 @@ public class LobbyServiceImpl implements LobbyService {
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
+
+    @Override
+    public LobbyDTO kickPlayer(String lobbyId,
+                               String requesterUsername,
+                               String usernameToKick) {
+
+        Lobbies lobby = lobbyRepo.findById(lobbyId)
+                .orElseThrow(() -> new IllegalArgumentException("Lobby not found"));
+
+        if (!Objects.equals(lobby.getHostUser().getUsername(), requesterUsername)) {
+            throw new SecurityException("Only the lobby host can kick players.");
+        }
+
+        User userToKick = userRepo.findByUsername(usernameToKick)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        removeUserFromAllTeams(lobby, userToKick);
+        lobbyRepo.save(lobby);
+        return mapToDTO(lobby);
+    }
+
+    @Override
+    public Optional<LobbyDTO> leaveLobby(String lobbyId,
+                                         String username) {
+
+        Lobbies lobby = lobbyRepo.findById(lobbyId)
+                .orElseThrow(() -> new IllegalArgumentException("Lobby not found"));
+
+        if (Objects.equals(lobby.getHostUser().getUsername(), username)) {
+            throw new IllegalStateException("Lobby host must delete the lobby instead of leaving.");
+        }
+
+        User user = userRepo.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        removeUserFromAllTeams(lobby, user);
+
+        int remaining = lobby.getUnassignedPlayers().size()
+                + lobby.getTeamAPlayers().size()
+                + lobby.getTeamBPlayers().size();
+
+        if (remaining == 0) {
+            lobbyRepo.delete(lobby);
+            return Optional.empty();
+        }
+
+        lobbyRepo.save(lobby);
+        return Optional.of(mapToDTO(lobby));
+    }
+
+    private void removeUserFromAllTeams(Lobbies lobby, User user) {
+        boolean removed =
+                lobby.getUnassignedPlayers().removeIf(u -> u.getId().equals(user.getId())) ||
+                        lobby.getTeamAPlayers()     .removeIf(u -> u.getId().equals(user.getId())) ||
+                        lobby.getTeamBPlayers()     .removeIf(u -> u.getId().equals(user.getId()));
+
+        if (!removed) {
+            throw new IllegalStateException("User is not part of this lobby.");
+        }
+    }
+
 
 
     @Override

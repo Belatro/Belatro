@@ -1,9 +1,6 @@
 package backend.belatro.controllers;
 
-import backend.belatro.dtos.JoinLobbyRequestDTO;
-import backend.belatro.dtos.LobbyDTO;
-import backend.belatro.dtos.MatchDTO;
-import backend.belatro.dtos.TeamSwitchRequestDTO;
+import backend.belatro.dtos.*;
 import backend.belatro.services.LobbyService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -59,8 +56,6 @@ public class LobbyController {
         return ResponseEntity.noContent().build();
     }
 
-
-
     @PostMapping("/switchTeam")
     public ResponseEntity<LobbyDTO> switchTeam(@RequestBody TeamSwitchRequestDTO switchRequest) {
         LobbyDTO updated = lobbyService.switchTeam(switchRequest);
@@ -71,4 +66,22 @@ public class LobbyController {
         MatchDTO matchDTO = lobbyService.startMatch(lobbyId);
         return ResponseEntity.ok(matchDTO);
     }
+    @PatchMapping("/{lobbyId}/kick")
+    public ResponseEntity<LobbyDTO> kickPlayer(@PathVariable String lobbyId,
+                                               @RequestBody KickPlayerRequestDTO body) {
+        LobbyDTO dto = lobbyService.kickPlayer(
+                lobbyId,
+                body.requesterUsername(),
+                body.usernameToKick());
+        return ResponseEntity.ok(dto);
+    }
+
+    @PatchMapping("/{lobbyId}/leave")
+    public ResponseEntity<LobbyDTO> leaveLobby(@PathVariable String lobbyId,
+                                               @RequestBody LeaveLobbyRequestDTO body) {
+        return lobbyService.leaveLobby(lobbyId, body.username())
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
 }
