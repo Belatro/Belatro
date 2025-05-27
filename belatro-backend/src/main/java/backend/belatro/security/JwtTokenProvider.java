@@ -45,6 +45,9 @@ public class JwtTokenProvider {
                 .getBody();
         return claims.getSubject();
     }
+    public String getUsername(String token) {
+        return getSubject(token);
+    }
 
     public boolean validateToken(String token) {
         try {
