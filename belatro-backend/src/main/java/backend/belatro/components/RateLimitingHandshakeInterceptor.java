@@ -1,25 +1,21 @@
 package backend.belatro.components;
 
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
+import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Very light per-IP limiter: max 20 concurrent handshakes.
- * Replace with Bucket4j / proxy rules for production.
- */
 @Component
 public class RateLimitingHandshakeInterceptor implements HandshakeInterceptor {
 
     private static final int MAX_PER_IP = 20;
-
     private final Map<String, AtomicInteger> ipCounts = new ConcurrentHashMap<>();
 
     @Override
@@ -28,12 +24,11 @@ public class RateLimitingHandshakeInterceptor implements HandshakeInterceptor {
                                    WebSocketHandler wsHandler,
                                    Map<String, Object> attributes) {
 
-        String ip = ((HttpServletRequest) request).getRemoteAddr();
-        int current = ipCounts
-                .computeIfAbsent(ip, k -> new AtomicInteger())
-                .incrementAndGet();
+        String ip = extractIp(request);
+        int current = ipCounts.computeIfAbsent(ip, k -> new AtomicInteger())
+                              .incrementAndGet();
 
-        attributes.put("HANDSHAKE_IP", ip);        // remember for afterHandshake
+        attributes.put("HANDSHAKE_IP", ip);
 
         if (current > MAX_PER_IP) {
             ipCounts.get(ip).decrementAndGet();
@@ -49,8 +44,26 @@ public class RateLimitingHandshakeInterceptor implements HandshakeInterceptor {
                                WebSocketHandler wsHandler,
                                Exception ex) {
 
-        String ip = ((HttpServletRequest) request).getRemoteAddr();
+        String ip = extractIp(request);
         ipCounts.getOrDefault(ip, new AtomicInteger()).decrementAndGet();
     }
 
+    /**
+     * Safely obtain the Client IP from the ServerHttpRequest.
+     */
+    private static String extractIp(ServerHttpRequest request) {
+
+        // 1️⃣ First try the low-level remote address
+        InetSocketAddress remote = request.getRemoteAddress();
+        if (remote.getAddress() != null) {
+            return remote.getAddress().getHostAddress();
+        }
+
+        // 2️⃣ Fallback: unwrap the servlet request if present
+        if (request instanceof ServletServerHttpRequest servletRequest) {
+            return servletRequest.getServletRequest().getRemoteAddr();
+        }
+
+        return "unknown";
+    }
 }
