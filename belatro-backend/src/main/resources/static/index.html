@@ -29,8 +29,8 @@
 <!-- LOGIN -->
 <section>
     <h2>1. Login</h2>
-    <input id="username" placeholder="Username" value="Alice"> <!-- Default for testing -->
-    <input id="password" type="password" placeholder="Password" value="password"> <!-- Default for testing -->
+    <input id="username" placeholder="Username" value="lukas"> <!-- Default for testing -->
+    <input id="password" type="password" placeholder="Password" value="123"> <!-- Default for testing -->
     <button id="loginBtn">Log In</button>
     <span id="loginStatus"></span>
     <div id="currentUserInfo" style="margin-top: 0.5em;"></div> <!-- ADDED for user info display -->
@@ -728,7 +728,8 @@
         const panelPrv = document.querySelector(`#${displayName} .prv`);
 
         /* create STOMP client                                            */
-        const socket = new SockJS(`${apiBase}/ws?user=${backendUsername}`);
+        const socket = new SockJS(`${apiBase}/ws?user=${encodeURIComponent(backendUsername)}`);
+
         const client = webstomp.over(socket, { debug: true });
 
         client.connect(

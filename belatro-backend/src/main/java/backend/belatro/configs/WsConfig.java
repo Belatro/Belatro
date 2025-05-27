@@ -1,5 +1,6 @@
 package backend.belatro.configs;
 
+import backend.belatro.components.RateLimitingHandshakeInterceptor;
 import backend.belatro.security.JwtTokenProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -36,10 +37,12 @@ import java.util.Optional;
 public class WsConfig implements WebSocketMessageBrokerConfigurer {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final RateLimitingHandshakeInterceptor rateLimitingHandshakeInterceptor;
 
     @Autowired
-    public WsConfig(JwtTokenProvider jwtTokenProvider) {
+    public WsConfig(JwtTokenProvider jwtTokenProvider, RateLimitingHandshakeInterceptor rateLimitingHandshakeInterceptor) {
         this.jwtTokenProvider = jwtTokenProvider;
+        this.rateLimitingHandshakeInterceptor = rateLimitingHandshakeInterceptor;
     }
 
 
@@ -48,7 +51,8 @@ public class WsConfig implements WebSocketMessageBrokerConfigurer {
         // grab the StompWebSocketEndpointRegistration
         var reg = registry
                 .addEndpoint("/ws")
-                .setAllowedOriginPatterns("*");
+                .setAllowedOriginPatterns("*")
+                .addInterceptors(rateLimitingHandshakeInterceptor);
 
         // 1) for SockJS transport, intercept the HTTP handshake
         reg.addInterceptors(new HandshakeInterceptor() {
