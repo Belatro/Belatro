@@ -23,6 +23,7 @@ import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
 
@@ -105,8 +106,7 @@ public class WsConfig implements WebSocketMessageBrokerConfigurer {
             protected Principal determineUser(ServerHttpRequest request,
                                               WebSocketHandler wsHandler,
                                               Map<String, Object> attributes) {
-                /* If we stored an Authentication, re-use it, otherwise fall
-                   back to the simple String-based Principal you already had. */
+
                 Object maybeAuth = attributes.get("SPRING.AUTHENTICATION");
                 if (maybeAuth instanceof Authentication auth) {
                     return auth;
@@ -116,7 +116,8 @@ public class WsConfig implements WebSocketMessageBrokerConfigurer {
         });
 
 
-        reg.withSockJS();
+        reg.withSockJS().setDisconnectDelay(30_000L);
+
     }
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
@@ -135,7 +136,6 @@ public class WsConfig implements WebSocketMessageBrokerConfigurer {
                             SecurityContextHolder.getContext().setAuthentication(auth);
                         }
                     }
-                    /* 2) Fallback: read JWT from native STOMP header */
                     if (accessor.getUser() == null) {
                         String raw = accessor.getFirstNativeHeader("Authorization");
                         if (raw != null && raw.startsWith("Bearer ")) {
@@ -168,6 +168,14 @@ public class WsConfig implements WebSocketMessageBrokerConfigurer {
         // tell Spring that “/user” is the prefix for user-targeted destinations
         registry.setUserDestinationPrefix("/user");
     }
+    @Override
+    public void configureWebSocketTransport(WebSocketTransportRegistration registration) {
+        registration
+                .setMessageSizeLimit(64 * 1024)      // 64 KiB per STOMP frame
+                .setSendBufferSizeLimit(512 * 1024)  // 512 KiB aggregated
+                .setSendTimeLimit(15_000);           // 15 s max to flush buffer
+    }
+
 
     @Bean
     public TaskScheduler brokerTaskScheduler() {
