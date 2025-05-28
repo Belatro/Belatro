@@ -20,6 +20,8 @@ public class MatchMove {
     private String  id;
     private String  matchId;
     private int     number;
+    private int     handNo;
+    private int     trickNo;
     private MoveType type;
     private Map<String, Object> payload;
     private double  evaluation;

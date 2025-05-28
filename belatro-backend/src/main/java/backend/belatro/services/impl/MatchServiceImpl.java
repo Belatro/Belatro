@@ -17,13 +17,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
+
 
 @Service
 public class MatchServiceImpl implements IMatchService {
 
     private final MatchRepo matchRepo;
     private final MatchMoveRepo matchMoveRepo;
+    private static final int PLAYS_PER_HAND  = 32;
+    private static final int PLAYS_PER_TRICK = 4;
+    private static final AtomicLong GLOBAL_MOVE_SEQUENCE = new AtomicLong();
 
     @Autowired
     public MatchServiceImpl(MatchRepo matchRepo, MatchMoveRepo matchMoveRepo) {
@@ -72,71 +78,157 @@ public class MatchServiceImpl implements IMatchService {
     }
 
     @Transactional
+    @Override
     public void recordMove(String matchId,
-                           MoveType type,                     // e.g. "PLAY_CARD", "BID"
-                           Map<String, Object> payload,     // arbitrary JSON-ish info
+                           MoveType moveType,
+                           Map<String, Object> payload,
                            double evaluation) {
 
-        int nextNo = (int) matchMoveRepo.countByMatchId(matchId) + 1;
+        long totalCardPlays = calculateTotalCardPlays(matchId, moveType);
 
-        // 2) Persist
-        MatchMove move = MatchMove.builder()
-                .matchId   (matchId)
-                .number    (nextNo)           // globally ordered within the match
-                .type      (type)
-                .payload   (payload)
-                .evaluation(evaluation)
-                .ts        (Instant.now())
-                .build();
+        // Only calculate hand/trick numbers for PLAY_CARD moves
+        int handNo = 1;
+        int trickNo = 1;
+
+        if (moveType == MoveType.PLAY_CARD) {
+            handNo = calculateHandNumber(totalCardPlays);
+            trickNo = calculateTrickNumber(totalCardPlays);
+        } else {
+            Optional<MatchMove> lastCardMove = matchMoveRepo.findFirstByMatchIdAndTypeOrderByNumberDesc(matchId, MoveType.PLAY_CARD);
+            if (lastCardMove.isPresent()) {
+                handNo = lastCardMove.get().getHandNo();
+            }
+        }
+
+        MatchMove move = new MatchMove();
+        move.setMatchId(matchId);
+        move.setNumber((int) GLOBAL_MOVE_SEQUENCE.incrementAndGet());
+        move.setType(moveType);
+        move.setPayload(payload);
+        move.setEvaluation(evaluation);
+        move.setHandNo(handNo);
+        move.setTrickNo(trickNo);
+        move.setTs(Instant.now());
 
         matchMoveRepo.save(move);
     }
 
+    private long calculateTotalCardPlays(String matchId, MoveType moveType) {
+        // Count existing PLAY_CARD moves for this match
+        long existingCardPlays = matchMoveRepo.countByMatchIdAndType(matchId, MoveType.PLAY_CARD);
+
+        // If the current move is also a PLAY_CARD, add 1
+        if (moveType == MoveType.PLAY_CARD) {
+            existingCardPlays++;
+        }
+
+        return existingCardPlays;
+    }
+
+    private int calculateHandNumber(long totalCardPlays) {
+        // Fix off-by-one error: hand 1 = cards 1-32, hand 2 = cards 33-64, etc.
+        return (int) ((totalCardPlays - 1) / PLAYS_PER_HAND) + 1;
+    }
+
+    private int calculateTrickNumber(long totalCardPlays) {
+        // Fix off-by-one error: within each hand, calculate which trick
+        long cardInCurrentHand = ((totalCardPlays - 1) % PLAYS_PER_HAND) + 1;
+        return (int) ((cardInCurrentHand - 1) / PLAYS_PER_TRICK) + 1;
+    }
+
+
+
     @Override
     public List<HandDTO> getStructuredMoves(String matchId) {
 
-        List<MatchMove> movesFlat = matchMoveRepo.findByMatchIdOrderByNumber(matchId);
+        List<MatchMove> moves = matchMoveRepo.findByMatchIdOrderByNumber(matchId);
 
-        // handNo ‑> trickNo ‑> moves
-        Map<Integer, Map<Integer, List<MatchMove>>> grouped =
-                movesFlat.stream()
-                        .collect(Collectors.groupingBy(
-                                mv -> (Integer) mv.getPayload().getOrDefault("handNo", 0),
-                                LinkedHashMap::new,
-                                Collectors.groupingBy(
-                                        mv -> (Integer) mv.getPayload().getOrDefault("trickNo", 0),
-                                        LinkedHashMap::new,
-                                        Collectors.toList()
-                                )));
+        /* Helper record for tracking tricks in progress */
+        record InProgress(List<MoveDTO> moves, int trickNo) {}
 
-        return grouped.entrySet().stream()
-                .map(hand -> {
-                    int handNo = hand.getKey();
-                    List<TrickDTO> tricks = hand.getValue().entrySet().stream()
-                            .map(trick -> {
-                                int trickNo = trick.getKey();
-                                List<MoveDTO> moves = trick.getValue().stream()
-                                        .sorted(Comparator.comparingInt(MatchMove::getNumber))
-                                        .map(mm -> new MoveDTO(
-                                                mm.getNumber(),
-                                                (String) mm.getPayload().get("playerId"),
-                                                (String) mm.getPayload().get("card")))
-                                        .toList();
+        /* 1. Prepare containers */
+        Map<Integer, List<TrumpCallDTO>> trumpByHand   = new LinkedHashMap<>();
+        Map<Integer, List<TrickDTO>>     tricksByHand  = new LinkedHashMap<>();
+        Map<Integer, InProgress>         currentTricks = new HashMap<>();
 
-                                String trump = trick.getValue().stream()
-                                        .map(mm -> (String) mm.getPayload().get("trump"))
-                                        .filter(Objects::nonNull)
-                                        .findFirst()
-                                        .orElse(null);
+        /* state that replaces the incorrect move.getHandNo() */
+        int handIdx       = 1;
+        int cardsInHand   = 0;
 
-                                return new TrickDTO(trickNo, trump, moves);
-                            })
-                            .toList();
+        /* helper: flush a trick for a given hand */
+        BiConsumer<Integer, InProgress> flush =
+                (h, ip) -> {
+                    if (!ip.moves().isEmpty()) {
+                        tricksByHand.get(h)
+                                .add(new TrickDTO(ip.trickNo(), List.copyOf(ip.moves())));
+                        currentTricks.put(h, new InProgress(new ArrayList<>(), ip.trickNo() + 1));
+                    }
+                };
 
-                    return new HandDTO(handNo, tricks);
-                })
+        for (MatchMove mv : moves) {
+
+            /* ---------------- recompute the hand number ---------------- */
+            if (mv.getType() == MoveType.PLAY_CARD) {
+                cardsInHand++;
+                if (cardsInHand > 32) {            // start new hand
+                    flush.accept(handIdx, currentTricks.get(handIdx)); // close open trick
+                    handIdx++;
+                    cardsInHand = 1;               // current card belongs to the new hand
+                }
+            }
+            int h = handIdx;                       // effective hand for this move
+
+            currentTricks.computeIfAbsent(h, k -> new InProgress(new ArrayList<>(), 1));
+            tricksByHand .computeIfAbsent(h, k -> new ArrayList<>());
+            trumpByHand  .computeIfAbsent(h, k -> new ArrayList<>());
+
+            InProgress ip = currentTricks.get(h);
+
+            switch (mv.getType()) {
+
+                case BID -> {
+                    boolean isTrump = "CALL_TRUMP".equals(mv.getPayload().get("action"))
+                            || mv.getPayload().containsKey("trump");
+                    if (isTrump) {
+                        trumpByHand.get(h).add(new TrumpCallDTO(
+                                mv.getNumber(),
+                                (String) mv.getPayload().get("playerId"),
+                                (String) mv.getPayload().get("trump")));
+                    }
+                }
+
+                case PLAY_CARD -> {
+                    ip.moves().add(new MoveDTO(
+                            mv.getNumber(),
+                            (String) mv.getPayload().get("playerId"),
+                            (String) mv.getPayload().get("card")));
+
+                    if (ip.moves().size() == 4) {          // trick is full
+                        flush.accept(h, ip);
+                    }
+                }
+
+                case END_TRICK -> flush.accept(h, ip);
+
+                default -> { /* ignore */ }
+            }
+        }
+
+        /* close leftovers at EOF */
+        currentTricks.forEach(flush);
+
+        /* build final DTO list */
+        return tricksByHand.entrySet().stream()
+                .map(e -> new HandDTO(
+                        e.getKey(),
+                        trumpByHand.get(e.getKey()),
+                        e.getValue()))
                 .toList();
     }
+
+
+
+
 
     @Override
     public List<MoveDTO> getMoves(String matchId) {
