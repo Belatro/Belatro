@@ -47,8 +47,13 @@ dependencies {
 	testImplementation 'org.junit.jupiter:junit-jupiter-params:5.11.4'
 	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.11.4'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
-
-	// JJWT: split API / Impl / Jackson binding
+	testImplementation 'org.mockito:mockito-core:5.11.0'
+	testImplementation platform('org.testcontainers:testcontainers-bom:1.19.6')
+	testImplementation 'org.mockito:mockito-junit-jupiter:5.11.0'
+	testImplementation 'org.springframework:spring-messaging'
+	testImplementation 'org.testcontainers:junit-jupiter'
+	testImplementation "com.redis:testcontainers-redis:2.2.4"
+	testImplementation 'org.springframework.boot:spring-boot-starter-websocket'
 	implementation "io.jsonwebtoken:jjwt-api:0.11.5"
 	runtimeOnly    "io.jsonwebtoken:jjwt-impl:0.11.5"
 	runtimeOnly    "io.jsonwebtoken:jjwt-jackson:0.11.5"

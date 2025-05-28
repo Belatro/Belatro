@@ -1,6 +1,8 @@
 package backend.belatro.controllers;
 
+import backend.belatro.dtos.HandDTO;
 import backend.belatro.dtos.MatchDTO;
+import backend.belatro.dtos.MoveDTO;
 import backend.belatro.services.IMatchService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -52,4 +54,16 @@ public class MatchController {
         matchService.deleteMatch(id);
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping("/{id}/moves")
+    public ResponseEntity<List<MoveDTO>> getMoves(@PathVariable String id) {
+        return ResponseEntity.ok(matchService.getMoves(id));
+    }
+
+    @GetMapping("/{id}/structured-moves")
+    public ResponseEntity<List<HandDTO>> getStructuredMoves(@PathVariable String id) {
+        return ResponseEntity.ok(matchService.getStructuredMoves(id));
+    }
+
+
 }

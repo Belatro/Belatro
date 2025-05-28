@@ -1,18 +1,23 @@
 package backend.belatro.configs;
 
+import backend.belatro.pojo.gamelogic.BelotGame;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.lettuce.core.resource.ClientResources;
 import io.lettuce.core.resource.DefaultClientResources;
+import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
-import org.springframework.data.redis.connection.lettuce.LettucePoolingClientConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
+import org.springframework.data.redis.connection.lettuce.LettucePoolingClientConfiguration;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 import java.time.Duration;
@@ -53,6 +58,7 @@ public class RedisConfig {
         return resources;
     }
 
+
     @Bean
     public LettuceConnectionFactory redisConnectionFactory(ClientResources clientResources) {
         logger.debug("Building RedisStandaloneConfiguration: host={}, port={}", redisHost, redisPort);
@@ -92,18 +98,61 @@ public class RedisConfig {
         logger.debug("Initialized LettuceConnectionFactory");
         return connectionFactory;
     }
+//    @Bean(name = "redisObjectMapper")
+//    public ObjectMapper objectMapper() {
+//        return JsonMapper.builder()
+//                .activateDefaultTyping(LaissezFaireSubTypeValidator.instance,
+//                        ObjectMapper.DefaultTyping.NON_FINAL,
+//                        JsonTypeInfo.As.PROPERTY)
+//                .addModule(new JavaTimeModule())       // if you store Instant / LocalDateTime
+//                .build();
+//    }
 
     @Bean
-    public RedisTemplate<String, Object> redisTemplate(LettuceConnectionFactory redisConnectionFactory) {
-        logger.debug("Creating RedisTemplate");
-        RedisTemplate<String, Object> template = new RedisTemplate<>();
-        template.setConnectionFactory(redisConnectionFactory);
-        template.setKeySerializer(new StringRedisSerializer());
-        template.setHashKeySerializer(new StringRedisSerializer());
-        template.setValueSerializer(new GenericJackson2JsonRedisSerializer());
-        template.setHashValueSerializer(new GenericJackson2JsonRedisSerializer());
-        template.afterPropertiesSet();
-        logger.debug("RedisTemplate created successfully");
-        return template;
+    public GenericJackson2JsonRedisSerializer jsonSerializer(ObjectMapper om) {
+        return new GenericJackson2JsonRedisSerializer(om);
     }
+    @Bean
+    public Jackson2JsonRedisSerializer<BelotGame> belotGameSerializer() {
+        Jackson2JsonRedisSerializer<BelotGame> ser =
+                new Jackson2JsonRedisSerializer<>(BelotGame.class);
+
+        // minimal mapper – no default typing necessary because the target
+        // class is supplied explicitly
+        ObjectMapper mapper = JsonMapper.builder()
+                .addModule(new JavaTimeModule())
+                .build();
+        ser.setObjectMapper(mapper);
+        return ser;
+    }
+
+
+    @Bean
+    public RedisTemplate<String,Object> redisTemplate(LettuceConnectionFactory cf,
+                                                      GenericJackson2JsonRedisSerializer ser) {
+        RedisTemplate<String,Object> tpl = new RedisTemplate<>();
+        tpl.setConnectionFactory(cf);
+        tpl.setKeySerializer(new StringRedisSerializer());
+        tpl.setHashKeySerializer(new StringRedisSerializer());
+        tpl.setValueSerializer(ser);
+        tpl.setHashValueSerializer(ser);
+        tpl.afterPropertiesSet();
+        return tpl;
+    }
+
+    @Bean
+    public RedisTemplate<String, BelotGame> belotGameRedisTemplate(
+            LettuceConnectionFactory cf,
+            Jackson2JsonRedisSerializer<BelotGame> belotGameSerializer
+    ) {
+        RedisTemplate<String, BelotGame> tpl = new RedisTemplate<>();
+        tpl.setConnectionFactory(cf);
+        tpl.setKeySerializer(new StringRedisSerializer());
+        tpl.setValueSerializer(belotGameSerializer);
+        tpl.afterPropertiesSet();
+        return tpl;
+    }
+
+
+
 }

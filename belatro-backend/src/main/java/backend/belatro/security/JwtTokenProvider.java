@@ -1,15 +1,19 @@
 package backend.belatro.security;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
 import java.util.Date;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class JwtTokenProvider {
@@ -18,6 +22,8 @@ public class JwtTokenProvider {
     private String jwtSecret;
 
     private Key key;
+
+    private final Map<String, Long> revokedTokens = new ConcurrentHashMap<>();
 
     @PostConstruct
     public void init() {
@@ -36,6 +42,18 @@ public class JwtTokenProvider {
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
+    public void invalidateToken(String token) {
+        revokedTokens.put(token, getExpiration(token).getTime());
+    }
+
+    public boolean isRevoked(String token) {
+        return revokedTokens.containsKey(token);
+    }
+
+    public Date getExpiration(String token) {
+        return parseClaims(token).getExpiration();
+    }
+
 
     public String getSubject(String token) {
         Claims claims = Jwts.parserBuilder()
@@ -45,14 +63,36 @@ public class JwtTokenProvider {
                 .getBody();
         return claims.getSubject();
     }
+    public String getUsername(String token) {
+        return getSubject(token);
+    }
 
     public boolean validateToken(String token) {
         try {
-            Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);
+            // 1) not revoked
+            if (isRevoked(token)) return false;
+
+            parseClaims(token);
             return true;
-        } catch (Exception ex) {
-            // you can log ex here
+        } catch (JwtException | IllegalArgumentException ex) {
             return false;
         }
     }
+
+    private Claims parseClaims(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(key)
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+    }
+
+    @Scheduled(fixedRate = 60_000)
+    private void purgeExpiredRevokedTokens() {
+        long now = System.currentTimeMillis();
+        revokedTokens.entrySet().removeIf(e -> e.getValue() < now);
+    }
+
+
+
 }

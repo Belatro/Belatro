@@ -1,29 +1,40 @@
 package backend.belatro.services.impl;
 
-import backend.belatro.dtos.LobbyDTO;
-import backend.belatro.dtos.MatchDTO;
-import backend.belatro.dtos.UserUpdateDTO;
+import backend.belatro.dtos.*;
+import backend.belatro.enums.MoveType;
 import backend.belatro.models.Lobbies;
 import backend.belatro.models.Match;
+import backend.belatro.models.MatchMove;
 import backend.belatro.models.User;
+import backend.belatro.repos.MatchMoveRepo;
 import backend.belatro.repos.MatchRepo;
 import backend.belatro.services.IMatchService;
 import backend.belatro.util.MappingUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import java.util.Collections;
-import java.util.List;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
+
 
 @Service
 public class MatchServiceImpl implements IMatchService {
 
     private final MatchRepo matchRepo;
+    private final MatchMoveRepo matchMoveRepo;
+    private static final int PLAYS_PER_HAND  = 32;
+    private static final int PLAYS_PER_TRICK = 4;
+    private static final AtomicLong GLOBAL_MOVE_SEQUENCE = new AtomicLong();
 
     @Autowired
-    public MatchServiceImpl(MatchRepo matchRepo) {
+    public MatchServiceImpl(MatchRepo matchRepo, MatchMoveRepo matchMoveRepo) {
         this.matchRepo = matchRepo;
+        this.matchMoveRepo = matchMoveRepo;
     }
 
     @Override
@@ -66,12 +77,184 @@ public class MatchServiceImpl implements IMatchService {
         matchRepo.deleteById(id);
     }
 
+    @Transactional
+    @Override
+    public void recordMove(String matchId,
+                           MoveType moveType,
+                           Map<String, Object> payload,
+                           double evaluation) {
+
+        long totalCardPlays = calculateTotalCardPlays(matchId, moveType);
+
+        // Only calculate hand/trick numbers for PLAY_CARD moves
+        int handNo = 1;
+        int trickNo = 1;
+
+        if (moveType == MoveType.PLAY_CARD) {
+            handNo = calculateHandNumber(totalCardPlays);
+            trickNo = calculateTrickNumber(totalCardPlays);
+        } else {
+            Optional<MatchMove> lastCardMove = matchMoveRepo.findFirstByMatchIdAndTypeOrderByNumberDesc(matchId, MoveType.PLAY_CARD);
+            if (lastCardMove.isPresent()) {
+                handNo = lastCardMove.get().getHandNo();
+            }
+        }
+
+        MatchMove move = new MatchMove();
+        move.setMatchId(matchId);
+        move.setNumber((int) GLOBAL_MOVE_SEQUENCE.incrementAndGet());
+        move.setType(moveType);
+        move.setPayload(payload);
+        move.setEvaluation(evaluation);
+        move.setHandNo(handNo);
+        move.setTrickNo(trickNo);
+        move.setTs(Instant.now());
+
+        matchMoveRepo.save(move);
+    }
+
+    private long calculateTotalCardPlays(String matchId, MoveType moveType) {
+        // Count existing PLAY_CARD moves for this match
+        long existingCardPlays = matchMoveRepo.countByMatchIdAndType(matchId, MoveType.PLAY_CARD);
+
+        // If the current move is also a PLAY_CARD, add 1
+        if (moveType == MoveType.PLAY_CARD) {
+            existingCardPlays++;
+        }
+
+        return existingCardPlays;
+    }
+
+    private int calculateHandNumber(long totalCardPlays) {
+        // Fix off-by-one error: hand 1 = cards 1-32, hand 2 = cards 33-64, etc.
+        return (int) ((totalCardPlays - 1) / PLAYS_PER_HAND) + 1;
+    }
+
+    private int calculateTrickNumber(long totalCardPlays) {
+        // Fix off-by-one error: within each hand, calculate which trick
+        long cardInCurrentHand = ((totalCardPlays - 1) % PLAYS_PER_HAND) + 1;
+        return (int) ((cardInCurrentHand - 1) / PLAYS_PER_TRICK) + 1;
+    }
+
+
+
+    @Override
+    public List<HandDTO> getStructuredMoves(String matchId) {
+
+        List<MatchMove> moves = matchMoveRepo.findByMatchIdOrderByNumber(matchId);
+
+        /* Helper record for tracking tricks in progress */
+        record InProgress(List<MoveDTO> moves, int trickNo) {}
+
+        /* 1. Prepare containers */
+        Map<Integer, List<TrumpCallDTO>> trumpByHand   = new LinkedHashMap<>();
+        Map<Integer, List<TrickDTO>>     tricksByHand  = new LinkedHashMap<>();
+        Map<Integer, InProgress>         currentTricks = new HashMap<>();
+
+        /* state that replaces the incorrect move.getHandNo() */
+        int handIdx       = 1;
+        int cardsInHand   = 0;
+
+        /* helper: flush a trick for a given hand */
+        BiConsumer<Integer, InProgress> flush =
+                (h, ip) -> {
+                    if (!ip.moves().isEmpty()) {
+                        tricksByHand.get(h)
+                                .add(new TrickDTO(ip.trickNo(), List.copyOf(ip.moves())));
+                        currentTricks.put(h, new InProgress(new ArrayList<>(), ip.trickNo() + 1));
+                    }
+                };
+
+        for (MatchMove mv : moves) {
+
+            /* ---------------- recompute the hand number ---------------- */
+            if (mv.getType() == MoveType.PLAY_CARD) {
+                cardsInHand++;
+                if (cardsInHand > 32) {            // start new hand
+                    flush.accept(handIdx, currentTricks.get(handIdx)); // close open trick
+                    handIdx++;
+                    cardsInHand = 1;               // current card belongs to the new hand
+                }
+            }
+            int h = handIdx;                       // effective hand for this move
+
+            currentTricks.computeIfAbsent(h, k -> new InProgress(new ArrayList<>(), 1));
+            tricksByHand .computeIfAbsent(h, k -> new ArrayList<>());
+            trumpByHand  .computeIfAbsent(h, k -> new ArrayList<>());
+
+            InProgress ip = currentTricks.get(h);
+
+            switch (mv.getType()) {
+
+                case BID -> {
+                    boolean isTrump = "CALL_TRUMP".equals(mv.getPayload().get("action"))
+                            || mv.getPayload().containsKey("trump");
+                    if (isTrump) {
+                        trumpByHand.get(h).add(new TrumpCallDTO(
+                                mv.getNumber(),
+                                (String) mv.getPayload().get("playerId"),
+                                (String) mv.getPayload().get("trump")));
+                    }
+                }
+
+                case PLAY_CARD -> {
+                    ip.moves().add(new MoveDTO(
+                            mv.getNumber(),
+                            (String) mv.getPayload().get("playerId"),
+                            (String) mv.getPayload().get("card")));
+
+                    if (ip.moves().size() == 4) {          // trick is full
+                        flush.accept(h, ip);
+                    }
+                }
+
+                case END_TRICK -> flush.accept(h, ip);
+
+                default -> { /* ignore */ }
+            }
+        }
+
+        /* close leftovers at EOF */
+        currentTricks.forEach(flush);
+
+        /* build final DTO list */
+        return tricksByHand.entrySet().stream()
+                .map(e -> new HandDTO(
+                        e.getKey(),
+                        trumpByHand.get(e.getKey()),
+                        e.getValue()))
+                .toList();
+    }
+
+
+
+
+
+    @Override
+    public List<MoveDTO> getMoves(String matchId) {
+        return matchMoveRepo.findByMatchIdOrderByNumber(matchId)
+                .stream()
+                .map(this::toMoveDTO)
+                .toList();
+    }
+
+    private MoveDTO toMoveDTO(MatchMove mm) {
+        return new MoveDTO(
+                mm.getNumber(),
+                (String) mm.getPayload().get("playerId"),
+                (String) mm.getPayload().get("card")
+        );
+    }
+
+
+
+
+
     private Match toEntity(MatchDTO dto) {
         System.out.println("Converting MatchDTO to Match. DTO id: " + dto.getId());
         Match match = new Match();
         match.setId(dto.getId());
         match.setGameMode(dto.getGameMode());
-        match.setMoves(dto.getMoves());
         match.setResult(dto.getResult());
         match.setStartTime(dto.getStartTime());
         match.setEndTime(dto.getEndTime());
@@ -116,7 +299,6 @@ public class MatchServiceImpl implements IMatchService {
         MatchDTO dto = new MatchDTO();
         dto.setId(match.getId());
         dto.setGameMode(match.getGameMode());
-        dto.setMoves(match.getMoves());
         dto.setResult(match.getResult());
         dto.setStartTime(match.getStartTime());
         dto.setEndTime(match.getEndTime());
