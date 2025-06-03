@@ -18,14 +18,36 @@
             min-width: 250px; /* Ensure player panels don't get too squished */
             box-sizing: border-box;
         }
+        .player.team-a {
+            border: 3px solid blue;
+        }
+        .player.team-b {
+            border: 3px solid red;
+        }
+
         .player h2 { margin-top: 0; }
         .section { margin: .5rem 0; }
         .cards button, .bids button { margin: .2rem; }
         pre { background: #f5f5f5; padding: .5rem; max-height: 10em; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+        .toast {
+            position: fixed;
+            bottom: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: #fff;
+            padding: .6rem 1.2rem;
+            border-radius: 6px;
+            opacity: 0;
+            transition: opacity .4s;
+            pointer-events: none;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
-
+<!-- GLOBAL ERROR TOAST -->
+<div id="errorToast" class="toast"></div>
 <!-- LOGIN -->
 <section>
     <h2>1. Login</h2>
@@ -282,14 +304,68 @@
         if(unassignedPlayersListEl) unassignedPlayersListEl.innerHTML = '';
     }
 
+
+    const usernameToPlayerName = {
+        'lukas': 'Alice',           // Your logged-in user maps to Alice
+        'lukastheklukas': 'Bob',    // Test user Bob
+        'LOLOLOL1': 'Carol',        // Test user Carol
+        'YOYOY1234': 'Dave'         // Test user Dave
+    };
+
+    function updatePlayerTeamIndicators(lobbyData) {
+        console.log('updatePlayerTeamIndicators called with:', lobbyData); // Debug log
+
+        // Clear all team classes first
+        PLAYERS.forEach(playerName => {
+            const playerPanel = document.getElementById(playerName);
+            if (playerPanel) {
+                playerPanel.classList.remove('team-a', 'team-b');
+                console.log(`Cleared classes for ${playerName}`); // Debug log
+
+                if (lobbyData) {
+                    // Check Team A
+                    if (lobbyData.teamAPlayers && Array.isArray(lobbyData.teamAPlayers)) {
+                        const isInTeamA = lobbyData.teamAPlayers.some(player => {
+                            const mappedPlayerName = usernameToPlayerName[player.username];
+                            console.log(`Checking Team A: ${player.username} -> ${mappedPlayerName} vs ${playerName}`); // Debug log
+                            return mappedPlayerName === playerName;
+                        });
+                        if (isInTeamA) {
+                            playerPanel.classList.add('team-a');
+                            console.log(`Added team-a class to ${playerName}`); // Debug log
+                        }
+                    }
+
+                    // Check Team B
+                    if (lobbyData.teamBPlayers && Array.isArray(lobbyData.teamBPlayers)) {
+                        const isInTeamB = lobbyData.teamBPlayers.some(player => {
+                            const mappedPlayerName = usernameToPlayerName[player.username];
+                            console.log(`Checking Team B: ${player.username} -> ${mappedPlayerName} vs ${playerName}`); // Debug log
+                            return mappedPlayerName === playerName;
+                        });
+                        if (isInTeamB) {
+                            playerPanel.classList.add('team-b');
+                            console.log(`Added team-b class to ${playerName}`); // Debug log
+                        }
+                    }
+                }
+            } else {
+                console.log(`Player panel not found for ${playerName}`); // Debug log
+            }
+        });
+    }
+
+
     // Function to render the lobby state (players in teams, unassigned)
     function displayLobbyState(lobbyData) {
         if (!lobbyData) {
             clearLobbyDisplay();
+            updatePlayerTeamIndicators(null); // Clear team indicators
             return;
         }
 
         clearLobbyDisplay(); // Clear previous state
+        updatePlayerTeamIndicators(lobbyData); // Add this line
 
         const renderPlayerList = (listEl, players, currentTeamId) => {
             if (!players || !listEl) return;
@@ -314,23 +390,17 @@
                     moveToBBtn.onclick = () => handleSwitchTeam(lobbyData.id, player.id, TEAM_B_ID);
                     li.appendChild(moveToBBtn);
                 }
-                // Potentially add "Move to Unassigned" if currentTeamId is A or B
-                // This depends on how your backend handles `targetTeam` for unassigning.
-                // If `targetTeam` can be null or "UNASSIGNED":
-                // if (currentTeamId === TEAM_A_ID || currentTeamId === TEAM_B_ID) {
-                //    const moveToUnassignedBtn = document.createElement('button');
-                //    moveToUnassignedBtn.textContent = "-> Unassigned";
-                //    moveToUnassignedBtn.onclick = () => handleSwitchTeam(lobbyData.id, player.id, null); // or "UNASSIGNED"
-                //    li.appendChild(moveToUnassignedBtn);
-                // }
                 listEl.appendChild(li);
             });
         };
 
         if(teamAListEl) renderPlayerList(teamAListEl, lobbyData.teamAPlayers, TEAM_A_ID);
         if(teamBListEl) renderPlayerList(teamBListEl, lobbyData.teamBPlayers, TEAM_B_ID);
-        if(unassignedPlayersListEl) renderPlayerList(unassignedPlayersListEl, lobbyData.unassignedPlayers, null); // null or a specific ID for unassigned
+        if(unassignedPlayersListEl) renderPlayerList(unassignedPlayersListEl, lobbyData.unassignedPlayers, null);
     }
+
+
+
 
     // Function to handle team switching
     async function handleSwitchTeam(lobbyId, userId, targetTeam) {
@@ -359,6 +429,7 @@
             const updatedLobby = await response.json();
             currentLobbyData = updatedLobby; // Store it
             displayLobbyState(updatedLobby); // Refresh the display
+            updatePlayerTeamIndicators(updatedLobby); // Add this line to refresh team colors
             lobbyManagementStatusEl.textContent = `✅ Player switched. Lobby updated.`;
         } catch (error) {
             lobbyManagementStatusEl.textContent = `⚠️ Error switching team: ${error.message}`;
@@ -815,6 +886,15 @@
         const panelId  = displayName;
         const cardsDiv = document.querySelector(`#${panelId} .cards`);
         const bidsDiv  = document.querySelector(`#${panelId} .bids`);
+        const trump  = privateState.publicPart?.trump
+                        || privateState.publicPart?.currentTrick?.trump
+                        || privateState.publicPart?.bids
+                        ?.findLast(b => b.action === 'CALL_TRUMP')  // ES2023 findLast
+                        ?.selectedTrump;          // current trump suit
+        const haveKing     = (privateState.hand||[]).some(c => c.boja === trump && c.rank === 'KRALJ');
+        const haveQueen    = (privateState.hand||[]).some(c => c.boja === trump && c.rank === 'BABA');
+        const belaPossible = haveKing && haveQueen && !privateState.belaAlreadyDeclared;
+
         if (!cardsDiv || !bidsDiv) return;
 
         cardsDiv.innerHTML = '';
@@ -835,11 +915,24 @@
 
                 /* …but only wire the click handler when it’s this player’s turn */
                 if (privateState.yourTurn) {
-                    btn.onclick = () => sendPlayerAction(
-                        backendUsername,
-                        'playCard',
-                        { card }
-                    );
+                    btn.onclick = () => {
+                        let declare = false;
+
+                        // Offer Bela only if: (a) it’s still possible this hand,
+                        // (b) the clicked card is a trump K or Q.
+                        if (belaPossible &&
+                            isTrumpCard(card, trump) &&
+                            (card.rank === 'KRALJ' || card.rank === 'BABA')) {
+
+                            declare = confirm('Declare Bela for 20 points?');
+                        }
+
+                        sendPlayerAction(
+                            backendUsername,
+                            'playCard',
+                            { card, declareBela: declare }
+                        );
+                    };
                 } else {
                     btn.disabled = true;          // optional: grey-out when not your turn
                 }
@@ -879,7 +972,9 @@
 
 
 
-
+    function isTrumpCard(card, trump) {
+        return trump && card.boja === trump;
+    }
 
     // Initial UI setup for password field if checkbox is present
     if (privateLobbyCheckboxEl) {

@@ -106,7 +106,6 @@ public class BelotGameService {
     }
 
     public PrivateGameView toPrivateView(BelotGame g, Player p) {
-        LOGGER.warn("DTO build – {} raw hand size = {}", p.getId(), p.getHand().size());
         boolean yourTurn =
                 g.getGameState() == GameState.BIDDING
                         ? g.getCurrentLead().getId().equals(p.getId())

@@ -6,6 +6,7 @@ import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Getter
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -69,6 +70,19 @@ public class Player {
         bidPassed = false;
         bidsHistory.clear();
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Player p)) return false;
+        return Objects.equals(id, p.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
+    }
+
 
 
 
