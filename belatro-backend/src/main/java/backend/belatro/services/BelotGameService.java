@@ -1,12 +1,15 @@
 package backend.belatro.services;
 
 import backend.belatro.dtos.BidDTO;
+import backend.belatro.dtos.PlayerPublicInfo;
 import backend.belatro.dtos.PrivateGameView;
 import backend.belatro.dtos.PublicGameView;
 import backend.belatro.events.GameStartedEvent;
 import backend.belatro.events.GameStateChangedEvent;
+import backend.belatro.models.User;
 import backend.belatro.pojo.gamelogic.*;
 import backend.belatro.pojo.gamelogic.enums.GameState;
+import backend.belatro.repos.UserRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -15,6 +18,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class BelotGameService {
@@ -23,10 +28,12 @@ public class BelotGameService {
     private static final Logger LOGGER = LoggerFactory.getLogger(BelotGameService.class);
     private final RedisTemplate<String, BelotGame> redis;
     private final ApplicationEventPublisher eventPublisher; // Inject publisher
+    private final UserRepo userRepository;
 
-    public BelotGameService(RedisTemplate<String, BelotGame> redis, ApplicationEventPublisher eventPublisher) {
+    public BelotGameService(RedisTemplate<String, BelotGame> redis, ApplicationEventPublisher eventPublisher, UserRepo userRepository) {
         this.redis = redis;
         this.eventPublisher = eventPublisher;
+        this.userRepository = userRepository;
     }
 
 
@@ -94,13 +101,50 @@ public class BelotGameService {
                 .toList();
         List<BidDTO> safe = new ArrayList<>(dtos);
 
-        return new PublicGameView(
+        List<PlayerPublicInfo> teamAList = g.getTeamA()
+                .getPlayers().stream()
+                .map(p -> {
+                    // Look up User by ID:
+                    Optional<User> maybeUser = userRepository.findById(p.getId());
+                    String username = maybeUser
+                            .map(User::getUsername)
+                            .orElse(p.getId()); // fallback to ID if user record missing
+
+                    return new PlayerPublicInfo(
+                            username,
+                            p.getId(),
+                            p.getHand().size()
+                    );
+                })
+                .collect(Collectors.toList());
+
+        // 3) Build teamB’s PlayerPublicInfo list:
+        List<PlayerPublicInfo> teamBList = g.getTeamB()
+                .getPlayers().stream()
+                .map(p -> {
+                    Optional<User> maybeUser = userRepository.findById(p.getId());
+                    String username = maybeUser
+                            .map(User::getUsername)
+                            .orElse(p.getId());
+
+                    return new PlayerPublicInfo(
+                            username,
+                            p.getId(),
+                            p.getHand().size()
+                    );
+                })
+                .collect(Collectors.toList());
+
+
+                    return new PublicGameView(
                 g.getGameId(),
                 g.getGameState(),
                 safe,
                 g.getCurrentTrick(),
                 g.getTeamAScore(),
-                g.getTeamBScore()
+                g.getTeamBScore(),
+                            teamAList,
+                            teamBList
         );
     }
 

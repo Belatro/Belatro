@@ -13,5 +13,7 @@ public record PublicGameView(
         List<BidDTO> bids,
         Trick currentTrick,
         int     teamAScore,
-        int     teamBScore
+        int     teamBScore,
+        List<PlayerPublicInfo> teamA,
+        List<PlayerPublicInfo> teamB
 ) {}
