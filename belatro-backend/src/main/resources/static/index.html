@@ -611,11 +611,19 @@
 
             const lobbyData = {
                 name: lobbyName,
-                isPrivate: isLobbyPrivate,
+                privateLobby:  privateLobbyCheckboxEl.checked,  // <-- correct name
+                password:      privateLobbyCheckboxEl.checked
+                    ? lobbyPasswordInputEl.value
+                    : null,
+
                 hostUser: {                   // Create the nested hostUser object
                     id: currentUser.id,
                     username: currentUser.username // Include username as UserSimpleDTO expects it
-                }
+                },
+                status: 'WAITING',
+
+
+
                 // Make sure hostId is being sent
                 // maxPlayers might be another field you need, defaulting or from input
             };

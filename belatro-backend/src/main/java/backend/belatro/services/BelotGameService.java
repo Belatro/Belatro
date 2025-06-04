@@ -35,7 +35,6 @@ public class BelotGameService {
         game.startGame(); // Deals cards, sets bidding phase, etc.
         save(game);
 
-        // Publish an event after the game is started and saved
         eventPublisher.publishEvent(new GameStartedEvent(this, gameId));
         System.out.println("Published GameStartedEvent for gameId: " + gameId); // For logging
 

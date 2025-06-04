@@ -2,6 +2,7 @@ package backend.belatro.services.impl;
 
 import backend.belatro.dtos.*;
 import backend.belatro.enums.MoveType;
+import backend.belatro.exceptions.NotFoundException;
 import backend.belatro.models.Lobbies;
 import backend.belatro.models.Match;
 import backend.belatro.models.MatchMove;
@@ -114,10 +115,8 @@ public class MatchServiceImpl implements IMatchService {
     }
 
     private long calculateTotalCardPlays(String matchId, MoveType moveType) {
-        // Count existing PLAY_CARD moves for this match
         long existingCardPlays = matchMoveRepo.countByMatchIdAndType(matchId, MoveType.PLAY_CARD);
 
-        // If the current move is also a PLAY_CARD, add 1
         if (moveType == MoveType.PLAY_CARD) {
             existingCardPlays++;
         }
@@ -126,12 +125,10 @@ public class MatchServiceImpl implements IMatchService {
     }
 
     private int calculateHandNumber(long totalCardPlays) {
-        // Fix off-by-one error: hand 1 = cards 1-32, hand 2 = cards 33-64, etc.
         return (int) ((totalCardPlays - 1) / PLAYS_PER_HAND) + 1;
     }
 
     private int calculateTrickNumber(long totalCardPlays) {
-        // Fix off-by-one error: within each hand, calculate which trick
         long cardInCurrentHand = ((totalCardPlays - 1) % PLAYS_PER_HAND) + 1;
         return (int) ((cardInCurrentHand - 1) / PLAYS_PER_TRICK) + 1;
     }
@@ -167,13 +164,23 @@ public class MatchServiceImpl implements IMatchService {
 
         for (MatchMove mv : moves) {
 
-            /* ---------------- recompute the hand number ---------------- */
+            if (mv.getType() == MoveType.BID && cardsInHand == PLAYS_PER_HAND) {
+                // Close out any in-progress trick in the old hand:
+                flush.accept(handIdx, currentTricks.get(handIdx));
+                // Move to the next hand:
+                handIdx++;
+                // And reset the count of cards seen in the new hand
+                cardsInHand = 0;
+                // (We do NOT yet consume any “play” card, because this is still a BID.)
+            }
+
             if (mv.getType() == MoveType.PLAY_CARD) {
                 cardsInHand++;
-                if (cardsInHand > 32) {            // start new hand
-                    flush.accept(handIdx, currentTricks.get(handIdx)); // close open trick
+                if (cardsInHand > PLAYS_PER_HAND) {
+
+                    flush.accept(handIdx, currentTricks.get(handIdx));
                     handIdx++;
-                    cardsInHand = 1;               // current card belongs to the new hand
+                    cardsInHand = 1; // the current card is the first card of the new hand
                 }
             }
             int h = handIdx;                       // effective hand for this move
@@ -187,14 +194,21 @@ public class MatchServiceImpl implements IMatchService {
             switch (mv.getType()) {
 
                 case BID -> {
-                    boolean isTrump = "CALL_TRUMP".equals(mv.getPayload().get("action"))
-                            || mv.getPayload().containsKey("trump");
-                    if (isTrump) {
-                        trumpByHand.get(h).add(new TrumpCallDTO(
-                                mv.getNumber(),
-                                (String) mv.getPayload().get("playerId"),
-                                (String) mv.getPayload().get("trump")));
+
+                    Boolean passFlag = (Boolean) mv.getPayload().get("pass");
+                    String trumpVal;
+
+                    if (Boolean.TRUE.equals(passFlag)) {
+                        trumpVal = "PASS";
+                    } else {
+                        trumpVal = (String) mv.getPayload().get("trump");
                     }
+
+                    trumpByHand.get(h).add(new TrumpCallDTO(
+                            mv.getNumber(),
+                            (String) mv.getPayload().get("playerId"),
+                            trumpVal
+                    ));
                 }
 
                 case PLAY_CARD -> {
@@ -203,7 +217,7 @@ public class MatchServiceImpl implements IMatchService {
                             (String) mv.getPayload().get("playerId"),
                             (String) mv.getPayload().get("card")));
 
-                    if (ip.moves().size() == 4) {          // trick is full
+                    if (ip.moves().size() == 4) {
                         flush.accept(h, ip);
                     }
                 }
@@ -237,6 +251,16 @@ public class MatchServiceImpl implements IMatchService {
                 .map(this::toMoveDTO)
                 .toList();
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MatchDTO getMatchByLobbyId(String lobbyId) {
+        return matchRepo.findByOriginLobbyId(lobbyId)
+                .map(this::toDTO)
+                .orElseThrow(() -> new NotFoundException("Match for lobby " + lobbyId + " not found"));
+    }
+
+
 
     private MoveDTO toMoveDTO(MatchMove mm) {
         return new MoveDTO(
@@ -342,4 +366,7 @@ public class MatchServiceImpl implements IMatchService {
         System.out.println("Converted LobbyDTO: " + dto);
         return dto;
     }
+
+
 }
+
