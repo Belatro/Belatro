@@ -2,6 +2,17 @@ import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:8080';
 
+axios.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 
 // GET za sve usere
 export const fetchAllUsers = async () => {
@@ -18,10 +29,27 @@ export const fetchUserById = async (id) => {
 // POST za register usera
 export const registerUser = async (userData) => {
   try {
-    const response = await axios.post(`${API_BASE_URL}/user`, userData);
+    const response = await axios.post(`${API_BASE_URL}/api/auth/signup`, {
+      username: userData.username,
+      email: userData.email,
+      password: userData.passwordHashed,
+    });
     return response.data;
   } catch (error) {
     throw error.response?.data || error.message;
+  }
+};
+
+// POST za login usera
+export const loginUser = async ({ username, password }) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/api/auth/login`, {
+      username,
+      password,
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data?.message || "Login failed.";
   }
 };
 

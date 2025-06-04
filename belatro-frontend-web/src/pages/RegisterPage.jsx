@@ -38,13 +38,18 @@ function RegisterPage() {
 
     setLoading(true);
     try {
-      await registerUser({
+      const result = await registerUser({
         username,
         email,
         passwordHashed: password,
       });
 
-      navigate("/login");
+        localStorage.setItem("token", result.token);
+        localStorage.setItem("userId", result.user.id);
+        localStorage.setItem("username", result.user.username);
+        
+        navigate("/home");
+
     } catch (err) {
       console.error("Registration error:", err);
       const msg =

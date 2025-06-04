@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { fetchAllUsers } from '../services/userService';
+import { loginUser } from "../services/userService"; // only this needed now
 import "../App.css";
 
 const LoginPage = ({ setUsername }) => {
@@ -10,25 +10,30 @@ const LoginPage = ({ setUsername }) => {
 
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    fetchAllUsers().then((users) => {
-      const matchedUser = users.find(
-        (user) => user.username === usernameInput && user.passwordHashed === password
-      );
+    try {
+      const result = await loginUser({
+        username: usernameInput,
+        password: password,
+      });
 
-      if (matchedUser) {
-        console.log("Login successful:", matchedUser);
-        setLoginError("");
-        localStorage.setItem("username", matchedUser.username);
-        localStorage.setItem("userId", matchedUser.id);
-        setUsername({ username: matchedUser.username, userId: matchedUser.id });
-        navigate("/");
-      } else {
-        setLoginError("Invalid username or password");
-      }
-    });
+      // Save token and user info
+      localStorage.setItem("token", result.token);
+      localStorage.setItem("userId", result.user.id);
+      localStorage.setItem("username", result.user.username);
+
+      setUsername({
+        username: result.user.username,
+        userId: result.user.id,
+      });
+
+      setLoginError("");
+      navigate("/"); // redirect to homepage
+    } catch (err) {
+      setLoginError(err);
+    }
   };
 
   return (
@@ -41,12 +46,14 @@ const LoginPage = ({ setUsername }) => {
           placeholder="Username"
           value={usernameInput}
           onChange={(e) => setUsernameInput(e.target.value)}
+          required
         />
         <input
           type="password"
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          required
         />
         <button type="submit" className="lr-button">LOGIN</button>
 

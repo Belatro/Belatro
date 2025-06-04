@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import HomePage from "./pages/HomePage";
+import LobbyPage from './pages/LobbyPage';
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ProfilePage from './pages/ProfilePage';
 import NavBar from './components/NavBar';
+import MatchPage from './pages/MatchPage';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 
@@ -28,6 +30,8 @@ function App() {
         <Route path="/login" element={<LoginPage setUsername={setLoggedInUser} />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/profile" element={<ProfilePage user={loggedInUser} />} />
+        <Route path="/lobby" element={<LobbyPage />} />
+        <Route path="/match" element={<MatchPage />} />
       </Routes>
     </Router>
   );

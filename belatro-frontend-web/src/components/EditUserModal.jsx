@@ -40,7 +40,7 @@ const EditUserModal = ({ onClose, user, onUpdate }) => {
       const updatedData = {
         username,
         email,
-        passwordHashed: password,
+        password: password,
       };
 
       const updatedUser = await updateUser(user.id, updatedData);
