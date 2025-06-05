@@ -67,6 +67,7 @@ public class SecurityConfig {
     SecurityFilterChain publicAuthChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher("/api/auth/**")
+                .cors(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
         return http.build();
