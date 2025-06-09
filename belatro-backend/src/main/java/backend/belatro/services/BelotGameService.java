@@ -168,6 +168,19 @@ public class BelotGameService {
         boolean tieBrk = (g.getTeamAScore() >= TARGET_SCORE &&
                 g.getTeamBScore() >= TARGET_SCORE &&
                 g.getTeamAScore() == g.getTeamBScore());
+        List<PlayerPublicInfo> seatingOrder = g.getTurnOrder().stream()
+                .map(p -> {
+                    Optional<User> maybeUser = userRepository.findById(p.getId());
+                    String username = maybeUser.map(User::getUsername)
+                            .orElse(p.getId());
+                    return new PlayerPublicInfo(
+                            username,
+                            p.getId(),
+                            p.getHand().size()
+                    );
+                })
+                .toList();
+
 
 
         return new PublicGameView(
@@ -181,7 +194,8 @@ public class BelotGameService {
                 teamBList,
                 challenged,
                 winner,
-                tieBrk
+                tieBrk,
+                seatingOrder
         );
     }
 
