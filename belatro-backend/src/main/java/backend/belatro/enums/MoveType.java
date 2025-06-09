@@ -6,5 +6,6 @@ public enum MoveType {
     START_HAND,
     END_HAND,
     END_TRICK,
+    CHALLENGE,
     SYSTEM            // fallback / internal events
 }

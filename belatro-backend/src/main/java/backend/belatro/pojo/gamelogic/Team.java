@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Getter
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -25,5 +26,19 @@ public class Team {
 
     public void addPoints(int points) {
         this.score += points;
+    }
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Team t)) return false;
+
+        // order of the two seats doesn't matter
+        return this.players.stream().map(Player::getId).collect(Collectors.toSet())
+                .equals(t.players.stream().map(Player::getId).collect(Collectors.toSet()));
+    }
+
+    @Override
+    public int hashCode() {
+        return players.stream().map(Player::getId).collect(Collectors.toSet()).hashCode();
     }
 }

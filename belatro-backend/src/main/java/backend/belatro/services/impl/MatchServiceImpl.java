@@ -146,6 +146,7 @@ public class MatchServiceImpl implements IMatchService {
         /* 1. Prepare containers */
         Map<Integer, List<TrumpCallDTO>> trumpByHand   = new LinkedHashMap<>();
         Map<Integer, List<TrickDTO>>     tricksByHand  = new LinkedHashMap<>();
+        Map<Integer, List<ChallengeDTO>>  challByHand   = new LinkedHashMap<>();   // <── NEW
         Map<Integer, InProgress>         currentTricks = new HashMap<>();
 
         /* state that replaces the incorrect move.getHandNo() */
@@ -187,6 +188,7 @@ public class MatchServiceImpl implements IMatchService {
 
             currentTricks.computeIfAbsent(h, k -> new InProgress(new ArrayList<>(), 1));
             tricksByHand .computeIfAbsent(h, k -> new ArrayList<>());
+            challByHand  .computeIfAbsent(h, k -> new ArrayList<>());           // <── NEW
             trumpByHand  .computeIfAbsent(h, k -> new ArrayList<>());
 
             InProgress ip = currentTricks.get(h);
@@ -221,6 +223,24 @@ public class MatchServiceImpl implements IMatchService {
                         flush.accept(h, ip);
                     }
                 }
+                case CHALLENGE -> {
+                    boolean success = Boolean.TRUE.equals(mv.getPayload().get("success"));
+                    String  pid     = (String) mv.getPayload().get("playerId");
+
+                    challByHand.get(handIdx)
+                            .add(new ChallengeDTO(mv.getNumber(), pid, success));
+
+                    if (success) {
+
+                        flush.accept(handIdx, ip);
+
+
+                        handIdx++;
+                        cardsInHand = 0;
+
+                    }
+                }
+
 
                 case END_TRICK -> flush.accept(h, ip);
 
@@ -231,12 +251,13 @@ public class MatchServiceImpl implements IMatchService {
         /* close leftovers at EOF */
         currentTricks.forEach(flush);
 
-        /* build final DTO list */
         return tricksByHand.entrySet().stream()
                 .map(e -> new HandDTO(
                         e.getKey(),
-                        trumpByHand.get(e.getKey()),
-                        e.getValue()))
+                        trumpByHand .getOrDefault(e.getKey(), List.of()),
+                        tricksByHand.get(e.getKey()),
+                        challByHand .getOrDefault(e.getKey(), List.of())   // <── NEW
+                ))
                 .toList();
     }
 

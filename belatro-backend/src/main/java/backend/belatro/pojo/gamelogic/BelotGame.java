@@ -8,6 +8,7 @@ import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -18,6 +19,7 @@ import java.util.stream.Collectors;
  * Manages the game state, player turns, card dealing, trump calling, and scoring.
  */
 public class BelotGame {
+    private static final int TARGET_SCORE = 1001;
     @Getter
     private final String gameId;
 
@@ -27,7 +29,7 @@ public class BelotGame {
     @Getter
     private final Team teamB;
 
-
+    private static final int FULL_HAND_POINTS = 162;
     @Getter
     private final List<Player> turnOrder = new ArrayList<>();
 
@@ -67,20 +69,36 @@ public class BelotGame {
     @Getter
     private final List<Bid> bids = new ArrayList<>();
 
+    @JsonProperty private int teamADeclPoints = 0;
+    @JsonProperty private int teamBDeclPoints = 0;
+
     private static final Logger LOGGER = LoggerFactory.getLogger(BelotGame.class);
 
     @JsonProperty
     private int teamAHandPoints = 0;
     @JsonProperty
     private int teamBHandPoints = 0;
+    @JsonIdentityReference(alwaysAsId = true)
+    @JsonProperty
+    private final Set<Team> foulingTeams = new HashSet<>();
 
+    /* helper methods – never persisted */
+    @JsonIgnore public boolean anyFoul()         { return !foulingTeams.isEmpty(); }
+    @JsonIgnore public boolean bothTeamsFouled() { return foulingTeams.size() > 1; }
 
+    /* challenge quotas */
+    @JsonProperty
+    private final Map<String, Boolean> challengeUsed = new HashMap<>();
+
+    @JsonProperty
     private final Map<String, Boolean> belaAlreadyDeclared = new HashMap<>();
 
     @JsonProperty
     private int teamATricksWon = 0;
     @JsonProperty
     private int teamBTricksWon = 0;
+    @JsonProperty private Instant lastActivity = Instant.now();
+    @JsonIgnore  public Instant getLastActivity() { return lastActivity; }
 
     @JsonCreator
     public BelotGame(
@@ -322,9 +340,13 @@ public class BelotGame {
         teamBTricksWon  = 0;
         teamAHandPoints = 0;
         teamBHandPoints = 0;
+        teamADeclPoints  = 0;
+        teamBDeclPoints  = 0;
 
         completedTricks.clear();
         belaAlreadyDeclared.clear();
+        foulingTeams.clear();
+        challengeUsed.clear();
     }
 
 
@@ -446,9 +468,11 @@ public class BelotGame {
                 int points = declarations.get(player);
                 if (winningTeam == teamA) {
                     teamAHandPoints += points;
+                    teamADeclPoints += points;
                     LOGGER.info("Added " + points + " declaration points to Team A hand points, now: " + teamAHandPoints);
                 } else {
                     teamBHandPoints += points;
+                    teamBDeclPoints += points;
                     LOGGER.info("Added " + points + " declaration points to Team B hand points, now: " + teamBHandPoints);
                 }
 
@@ -568,6 +592,12 @@ public class BelotGame {
             throw new NullPointerException("Player or card cannot be null");
         }
 
+        if (!isValidPlay(player, card)) {
+            foulingTeams.add(getPlayerTeam(player));     // record the foul once
+            LOGGER.warn("Illegal card detected – {} by {}",
+                    card,
+                    getPlayerTeam(player) == teamA ? "Team A" : "Team B");
+        }
         // Process Bela declaration if requested.
         if (declareBela) {
             boolean declared = processBela(player, card);
@@ -634,9 +664,11 @@ public class BelotGame {
         if (playerTeam != null) {
             if (playerTeam == teamA) {
                 teamAHandPoints += 20;
+                teamADeclPoints += 20;
                 LOGGER.info("Added 20 bela points to Team A hand points, now: " + teamAHandPoints);
             } else {
                 teamBHandPoints += 20;
+                teamBDeclPoints += 20;
                 LOGGER.info("Added 20 bela points to Team B hand points, now: " + teamBHandPoints);
             }
 
@@ -861,11 +893,9 @@ public class BelotGame {
             }
 
             // match finished?
-            if (teamA.getScore() >= 1001 || teamB.getScore() >= 1001) {
-                gameState = GameState.COMPLETED;
-                LOGGER.info("Match over. Final A={} B={}", teamA.getScore(), teamB.getScore());
-                return;
-            }
+
+            checkMatchEnd();
+            if (gameState == GameState.COMPLETED) return;
 
             /* start next hand */
             resetHandState();
@@ -962,6 +992,47 @@ public class BelotGame {
         return completedTricks.size();
     }
 
+    /**
+     * Lets a player challenge the current hand.
+     * @return true  – challenge succeeded (infraction found, points awarded, hand ended)
+     *         false – either player already used their challenge OR no infraction existed
+     */
+    public boolean challengeHand(String playerId) {
+
+        Player challenger = findPlayerById(playerId);
+        if (challengeUsed.getOrDefault(playerId, false)) return false;
+        challengeUsed.put(playerId, true);
+
+        if (!anyFoul()) return false;                 // nobody fouled  ✗
+
+        Team challengerTeam = getPlayerTeam(challenger);
+
+        /* ---------- new success rule -------------------------------------- */
+        boolean success =
+                bothTeamsFouled()                     // either side fouled
+                        || !foulingTeams.contains(challengerTeam); // only opponents fouled
+        /* ------------------------------------------------------------------ */
+
+        if (!success) {
+            LOGGER.info("{} challenged but their own team was the only one that fouled", playerId);
+            return false;                             // quota spent, nothing else
+        }
+
+        /* ---- award 162 + declarations to the challenger’s team ---------- */
+        int declPts = (challengerTeam == teamA) ? teamADeclPoints : teamBDeclPoints;
+        int total   = FULL_HAND_POINTS + declPts;
+
+        challengerTeam.addPoints(total);
+        LOGGER.info("Challenge SUCCESS – {} pts (162+decl) awarded to {}",
+                total, challengerTeam == teamA ? "Team A" : "Team B");
+        checkMatchEnd();           // NEW
+        if (gameState == GameState.COMPLETED) return true;
+
+        resetHandState();
+        resetBidding();
+        startNextHand();
+        return true;
+    }
 
 
     /**
@@ -1067,6 +1138,34 @@ public class BelotGame {
         logTurnOrder("Dealer rotated to " + dealer.getId());
 
     }
+    @JsonIgnore
+    public void checkMatchEnd() {
+        if (gameState == GameState.COMPLETED) return;     // already finished
+
+        int a = teamA.getScore();
+        int b = teamB.getScore();
+
+        if (a < TARGET_SCORE && b < TARGET_SCORE) return; // nobody crossed yet
+
+        if (a != b) {                     // higher score wins immediately
+            gameState = GameState.COMPLETED;
+            LOGGER.info("Match over – winner: {}", a > b ? "Team A" : "Team B");
+        } else {
+            // scores tied but both ≥ target – keep playing extra hands
+            // (state stays RUNNING; UI will show “tiebreaker” automatically)
+            LOGGER.info("Scores tied at >= target – starting tie-breaker hand");
+        }
+    }
+    public boolean hasPlayerChallenged(Player p) {
+        return challengeUsed.getOrDefault(p.getId(), false);
+    }
+    @JsonIgnore
+    public List<Player> getPlayers() {
+        // keep allocation cheap: the list is tiny (4)
+        List<Player> all = new ArrayList<>(teamA.getPlayers());
+        all.addAll(teamB.getPlayers());
+        return all;
+    }
 
     /** Starts the next hand with the next dealer in sequence (no random pick). */
     public void startNextHand() {
@@ -1107,6 +1206,22 @@ public class BelotGame {
         LOGGER.info("{}  |  HandPts A:{}  B:{}   Total A:{}  B:{}",
                 msg, teamAHandPoints, teamBHandPoints,
                 teamA.getScore(),    teamB.getScore());
+    }
+    @JsonIgnore                  // don’t let Jackson persist this
+    public String getWinnerTeamId() {
+        Team winner = getWinner();          // ← you already have this method
+        if (winner == null) return null;    // tie / still running
+        return winner == teamA ? "A" : "B";
+    }
+
+    @JsonIgnore
+    public void cancelMatch() {
+        if (gameState == GameState.COMPLETED) return;   // ignore finished games
+        gameState = GameState.CANCELLED;
+    }
+    @JsonIgnore
+    public void setLastActivity(Instant t) {
+        this.lastActivity = t;
     }
 
 }

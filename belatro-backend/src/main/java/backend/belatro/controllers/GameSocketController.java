@@ -1,9 +1,6 @@
 package backend.belatro.controllers;
 
-import backend.belatro.dtos.BidMsg;
-import backend.belatro.dtos.PlayCardMsg;
-import backend.belatro.dtos.PrivateGameView;
-import backend.belatro.dtos.PublicGameView;
+import backend.belatro.dtos.*;
 import backend.belatro.enums.MoveType;
 import backend.belatro.events.GameStartedEvent;
 import backend.belatro.events.GameStateChangedEvent;
@@ -107,6 +104,21 @@ public class GameSocketController {
         matchService.recordMove(id, MoveType.BID, payload, 0.0);
 
         fanOutGameState(game);
+    }
+    @MessageMapping("/games/{id}/challenge")
+    public void challenge(@DestinationVariable String id, ChallengeMsg msg) {
+
+        BelotGameService.ChallengeOutcome res = svc.challengeHand(id, msg.playerId());
+
+        // write the move with the extra field
+        matchService.recordMove(
+                id,
+                MoveType.CHALLENGE,
+                Map.of("playerId", msg.playerId(),
+                        "success",  res.success()),
+                0.0);
+
+        fanOutGameState(res.game());
     }
 
     @MessageMapping("/games/{id}/refresh")
