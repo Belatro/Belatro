@@ -2,9 +2,11 @@ package backend.belatro.dtos;
 
 import backend.belatro.pojo.gamelogic.Trick;
 import backend.belatro.pojo.gamelogic.enums.GameState;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 import java.util.List;
+import java.util.Map;
 
 public record PublicGameView(
         String gameId,
@@ -13,5 +15,12 @@ public record PublicGameView(
         List<BidDTO> bids,
         Trick currentTrick,
         int     teamAScore,
-        int     teamBScore
+        int     teamBScore,
+        List<PlayerPublicInfo> teamA,
+        List<PlayerPublicInfo> teamB,
+        Map<String, Boolean> challengeUsedByPlayer,
+        String    winnerTeamId,     // null while running
+        boolean   tieBreaker  ,
+        @JsonProperty("seatingOrder")
+        List<PlayerPublicInfo> seatingOrder// true when both ≥ target AND scores equal
 ) {}

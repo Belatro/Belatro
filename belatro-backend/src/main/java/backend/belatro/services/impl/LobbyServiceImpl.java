@@ -131,7 +131,7 @@ public class LobbyServiceImpl implements LobbyService {
         Lobbies lobby = new Lobbies();
         lobby.setName(lobbyDTO.getName());
         lobby.setGameMode("CASUAL");
-        lobby.setStatus(lobbyDTO.getStatus());
+        lobby.setStatus(lobbyStatus.valueOf("WAITING"));
         lobby.setHostUser(host);
         lobby.setTeamAPlayers(new ArrayList<>());
         lobby.getTeamAPlayers().add(host);

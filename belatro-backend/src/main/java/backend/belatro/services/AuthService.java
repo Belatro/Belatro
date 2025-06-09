@@ -18,6 +18,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Locale;
+
 @Service
 public class AuthService {
 
@@ -38,17 +40,18 @@ public class AuthService {
     }
 
     public JwtResponseDTO login(LoginRequestDTO loginRequest) {
+        String username = normalizeUsername(loginRequest.getUsername());
 
         Authentication auth = authManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
-                        loginRequest.getUsername(),
+                       username,
                         loginRequest.getPassword()
                 )
         );
 
         SecurityContextHolder.getContext().setAuthentication(auth);
 
-        String username = auth.getName();
+
         String jwt      = tokenProvider.createToken(username, jwtExpirationMinutes);
 
         User user = userService.findByUsername(username)
@@ -64,6 +67,7 @@ public class AuthService {
     }
 
     public JwtResponseDTO signup(SignupRequestDTO dto) {
+        String username = normalizeUsername(dto.getUsername());
 
         if (userService.findByUsername(dto.getUsername()).isPresent()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -71,7 +75,7 @@ public class AuthService {
         }
 
         User newUser = new User();
-        newUser.setUsername(dto.getUsername());
+        newUser.setUsername(username);
         newUser.setEmail(dto.getEmail());
         newUser.setEloRating(1200);
         newUser.setPasswordHashed(passwordEncoder.encode(dto.getPassword()));
@@ -107,4 +111,8 @@ public class AuthService {
         }
         SecurityContextHolder.clearContext();
     }
+    private static String normalizeUsername(String raw) {
+        return raw == null ? null : raw.trim().toLowerCase(Locale.ROOT);
+    }
+
 }

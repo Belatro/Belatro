@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 @Service
@@ -53,8 +54,10 @@ public class UserService {
         userRepo.deleteById(id);
     }
 
-    public Optional<User> findByUsername(String username) {
-        return userRepo.findByUsername(username);
+    public Optional<User> findByUsername(String rawUsername) {
+        return userRepo.findByUsername(
+                rawUsername == null ? null : rawUsername.trim().toLowerCase(Locale.ROOT)
+        );
     }
 }
 

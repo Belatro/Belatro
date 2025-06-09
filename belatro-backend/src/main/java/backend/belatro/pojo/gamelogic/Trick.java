@@ -53,7 +53,7 @@ public class Trick {
 
 
     public boolean isComplete(int playerCount) {
-        System.out.println("Checking if trick is complete. Current plays: " + plays.size() + ", Required: " + playerCount);
+//        System.out.println("Checking if trick is complete. Current plays: " + plays.size() + ", Required: " + playerCount);
         return plays.size() == playerCount;
     }
 
@@ -186,6 +186,7 @@ public class Trick {
                 case KRALJ -> 4;  // King
                 case BABA -> 3;  // Queen
                 case DECKO -> 2;  // Jack
+                case DEVETKA -> 0;
                 default -> 0;
             };
         }

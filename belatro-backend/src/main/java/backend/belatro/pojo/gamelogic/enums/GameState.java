@@ -33,6 +33,7 @@ public enum GameState {
      * The game has been completed.
      */
     COMPLETED,
+    CANCELLED,
 
     HAND_COMPLETE;
 
@@ -48,6 +49,7 @@ public enum GameState {
             case SCORING -> "Round is being scored";
             case COMPLETED -> "Game is completed";
             case HAND_COMPLETE -> "Hand is completed, ready for next hand";
+            case CANCELLED -> "Game has been cancelled";
 
         };
     }

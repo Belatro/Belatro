@@ -22,6 +22,7 @@ public interface IMatchService {
 
     List<HandDTO> getStructuredMoves(String matchId);
     List<MoveDTO> getMoves(String matchId);
+    MatchDTO getMatchByLobbyId(String lobbyId);
 
 
 

@@ -8,7 +8,10 @@ import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
 import java.util.*;
+import java.util.stream.Collectors;
+
 @JsonIgnoreProperties(ignoreUnknown = true)
 
 /**
@@ -16,6 +19,7 @@ import java.util.*;
  * Manages the game state, player turns, card dealing, trump calling, and scoring.
  */
 public class BelotGame {
+    private static final int TARGET_SCORE = 1001;
     @Getter
     private final String gameId;
 
@@ -25,7 +29,7 @@ public class BelotGame {
     @Getter
     private final Team teamB;
 
-
+    private static final int FULL_HAND_POINTS = 162;
     @Getter
     private final List<Player> turnOrder = new ArrayList<>();
 
@@ -59,10 +63,14 @@ public class BelotGame {
     private GameState gameState = GameState.INITIALIZED;
 
     @JsonIdentityReference(alwaysAsId = true)
+    @JsonProperty("trumpCaller")
     private Player trumpCaller;
 
     @Getter
     private final List<Bid> bids = new ArrayList<>();
+
+    @JsonProperty private int teamADeclPoints = 0;
+    @JsonProperty private int teamBDeclPoints = 0;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BelotGame.class);
 
@@ -70,11 +78,27 @@ public class BelotGame {
     private int teamAHandPoints = 0;
     @JsonProperty
     private int teamBHandPoints = 0;
+    @JsonIdentityReference(alwaysAsId = true)
+    @JsonProperty
+    private final Set<Team> foulingTeams = new HashSet<>();
 
+    /* helper methods – never persisted */
+    @JsonIgnore public boolean anyFoul()         { return !foulingTeams.isEmpty(); }
+    @JsonIgnore public boolean bothTeamsFouled() { return foulingTeams.size() > 1; }
+
+    /* challenge quotas */
+    @JsonProperty
+    private final Map<String, Boolean> challengeUsed = new HashMap<>();
+
+    @JsonProperty
     private final Map<String, Boolean> belaAlreadyDeclared = new HashMap<>();
 
+    @JsonProperty
     private int teamATricksWon = 0;
+    @JsonProperty
     private int teamBTricksWon = 0;
+    @JsonProperty private Instant lastActivity = Instant.now();
+    @JsonIgnore  public Instant getLastActivity() { return lastActivity; }
 
     @JsonCreator
     public BelotGame(
@@ -109,6 +133,9 @@ public class BelotGame {
         turnOrder.addAll(newTurnOrder);
 
         currentLead = turnOrder.getFirst();
+
+        logTurnOrder("Dealer chosen (" + dealer.getId() + ")");
+
     }
 
     /**
@@ -177,8 +204,9 @@ public class BelotGame {
      */
     private boolean handlePass(Player player) {
         // If dealer is passing and must call trump, don't allow passing
-        if (player == dealer && isDealerForcedToCallTrump()) {
-            return false;
+        if (player.equals(dealer) && !trumpCalled) {
+            throw new IllegalStateException(
+                    "Dealer must choose a trump suit – passing is not allowed.");
         }
 
         // Record that this player passed
@@ -207,7 +235,7 @@ public class BelotGame {
         // Set the trump suit
         trump = selectedTrump;
         trumpCalled = true;
-        trumpCaller = player;
+        trumpCaller = findPlayerById(player.getId());
 
         // Deal the remaining cards
         dealRemainingCards();
@@ -220,6 +248,9 @@ public class BelotGame {
 
         // Process any declarations (belot, sequences, etc.)
         processDeclarations();
+
+        logTurnOrder("Trump called (" + selectedTrump + ") by " + player.getId());
+
 
         return true;
     }
@@ -299,6 +330,23 @@ public class BelotGame {
         for (Player player : turnOrder) {
             player.resetBidding();
         }
+    }
+    private void resetHandState() {
+        trumpCaller     = null;
+        trumpCalled     = false;
+        trump           = null;
+
+        teamATricksWon  = 0;
+        teamBTricksWon  = 0;
+        teamAHandPoints = 0;
+        teamBHandPoints = 0;
+        teamADeclPoints  = 0;
+        teamBDeclPoints  = 0;
+
+        completedTricks.clear();
+        belaAlreadyDeclared.clear();
+        foulingTeams.clear();
+        challengeUsed.clear();
     }
 
 
@@ -420,9 +468,11 @@ public class BelotGame {
                 int points = declarations.get(player);
                 if (winningTeam == teamA) {
                     teamAHandPoints += points;
+                    teamADeclPoints += points;
                     LOGGER.info("Added " + points + " declaration points to Team A hand points, now: " + teamAHandPoints);
                 } else {
                     teamBHandPoints += points;
+                    teamBDeclPoints += points;
                     LOGGER.info("Added " + points + " declaration points to Team B hand points, now: " + teamBHandPoints);
                 }
 
@@ -451,66 +501,65 @@ public class BelotGame {
      * @param playerId The ID of the player declaring Bela
      * @return True if the declaration was valid and points were awarded
      */
-    public boolean declareBela(String playerId) {
-        // Get player object from ID
-        Player player = findPlayerById(playerId);
-        if (player == null) {
-            LOGGER.warn("Player not found for ID: " + playerId);
-            return false;
-        }
-
-        // Check if the game is in playing state
-        if (gameState != GameState.PLAYING) {
-            LOGGER.warn("Attempted to declare Bela while game is not in playing state");
-            return false;
-        }
-
-        // Check if player has already declared Bela this hand
-        if (belaAlreadyDeclared.getOrDefault(playerId, false)) {
-            LOGGER.warn("Player " + playerId + " already declared Bela in this hand");
-            return false;
-        }
-
-        // Verify the player actually has a valid Bela (King+Queen of trump)
-        List<Card> playerHand = player.getHand();
-        boolean hasKing = playerHand.stream().anyMatch(card ->
-                card.getBoja() == trump && card.getRank() == Rank.KRALJ);
-        boolean hasQueen = playerHand.stream().anyMatch(card ->
-                card.getBoja() == trump && card.getRank() == Rank.BABA);
-
-        if (!hasKing || !hasQueen) {
-            LOGGER.warn("Player " + playerId + " tried to declare Bela but doesn't have King and Queen of trump");
-            return false;
-        }
-
-        // Award points to the player's team
-        Team team = getPlayerTeam(player);
-        if (team != null) {
-            if (team == teamA) {
-                teamAHandPoints += 20;
-                LOGGER.info("Added 20 bela points to Team A hand points, now: " + teamAHandPoints);
-            } else {
-                teamBHandPoints += 20;
-                LOGGER.info("Added 20 bela points to Team B hand points, now: " + teamBHandPoints);
-            }
-
-            LOGGER.info("Player " + playerId + " declared Bela for 20 points");
-
-        }
-
-        // Mark player as having declared Bela for this hand
-        belaAlreadyDeclared.put(playerId, true);
-        return true;
-    }
+//    public boolean declareBela(String playerId) {
+//        // Get player object from ID
+//        Player player = findPlayerById(playerId);
+//        if (player == null) {
+//            LOGGER.warn("Player not found for ID: " + playerId);
+//            return false;
+//        }
+//
+//        // Check if the game is in playing state
+//        if (gameState != GameState.PLAYING) {
+//            LOGGER.warn("Attempted to declare Bela while game is not in playing state");
+//            return false;
+//        }
+//
+//        // Check if player has already declared Bela this hand
+//        if (belaAlreadyDeclared.getOrDefault(playerId, false)) {
+//            LOGGER.warn("Player " + playerId + " already declared Bela in this hand");
+//            return false;
+//        }
+//
+//        // Verify the player actually has a valid Bela (King+Queen of trump)
+//        List<Card> playerHand = player.getHand();
+//        boolean hasKing = playerHand.stream().anyMatch(card ->
+//                card.getBoja() == trump && card.getRank() == Rank.KRALJ);
+//        boolean hasQueen = playerHand.stream().anyMatch(card ->
+//                card.getBoja() == trump && card.getRank() == Rank.BABA);
+//
+//        if (!hasKing || !hasQueen) {
+//            LOGGER.warn("Player " + playerId + " tried to declare Bela but doesn't have King and Queen of trump");
+//            return false;
+//        }
+//
+//        // Award points to the player's team
+//        Team team = getPlayerTeam(player);
+//        if (team != null) {
+//            if (team == teamA) {
+//                teamAHandPoints += 20;
+//                LOGGER.info("Added 20 bela points to Team A hand points, now: " + teamAHandPoints);
+//            } else {
+//                teamBHandPoints += 20;
+//                LOGGER.info("Added 20 bela points to Team B hand points, now: " + teamBHandPoints);
+//            }
+//
+//            LOGGER.info("Player " + playerId + " declared Bela for 20 points");
+//
+//        }
+//
+//        // Mark player as having declared Bela for this hand
+//        belaAlreadyDeclared.put(playerId, true);
+//        return true;
+//    }
     /**
      * Determines which team a player belongs to.
      */
     private Team getPlayerTeam(Player player) {
-        if (teamA.getPlayers().contains(player)) {
+        if (teamA.getPlayers().stream().anyMatch(p -> p.getId().equals(player.getId())))
             return teamA;
-        } else if (teamB.getPlayers().contains(player)) {
+        if (teamB.getPlayers().stream().anyMatch(p -> p.getId().equals(player.getId())))
             return teamB;
-        }
         return null;
     }
 
@@ -543,6 +592,12 @@ public class BelotGame {
             throw new NullPointerException("Player or card cannot be null");
         }
 
+        if (!isValidPlay(player, card)) {
+            foulingTeams.add(getPlayerTeam(player));     // record the foul once
+            LOGGER.warn("Illegal card detected – {} by {}",
+                    card,
+                    getPlayerTeam(player) == teamA ? "Team A" : "Team B");
+        }
         // Process Bela declaration if requested.
         if (declareBela) {
             boolean declared = processBela(player, card);
@@ -609,9 +664,11 @@ public class BelotGame {
         if (playerTeam != null) {
             if (playerTeam == teamA) {
                 teamAHandPoints += 20;
+                teamADeclPoints += 20;
                 LOGGER.info("Added 20 bela points to Team A hand points, now: " + teamAHandPoints);
             } else {
                 teamBHandPoints += 20;
+                teamBDeclPoints += 20;
                 LOGGER.info("Added 20 bela points to Team B hand points, now: " + teamBHandPoints);
             }
 
@@ -640,7 +697,7 @@ public class BelotGame {
      * @param card The card being played
      * @return true if the play is valid, false otherwise
      */
-    private boolean isValidPlay(Player player, Card card) {
+    public boolean isValidPlay(Player player, Card card) {
         if (currentTrick.getPlays().isEmpty()) {
             return true;
         }
@@ -737,136 +794,127 @@ public class BelotGame {
     }
 
     /**
-     * Apply the "padanje" rule and update the total scores.
-     * This should be called after all tricks have been played and before moving to the next hand.
+     * Apply “padanje” (falling): compare the TOTAL hand points of the caller’s
+     * team against the opponents. If the caller’s team scores *less than or
+     * equal to* the opponents, they fall and ALL points (caller + opponent)
+     * go to the opponents; otherwise each team keeps its own.
+     * Hand-point caches are always cleared before return.
      */
     private void applyPadanjeAndUpdateScores() {
-        // No padanje if no one called trump
-        if (trumpCaller == null) {
-            // Just add hand points to total score
+
+
+
+        /* Determine which side the caller belongs to by player ID */
+        boolean callerIsA = teamA.getPlayers()
+                .stream()
+                .anyMatch(p -> p.getId().equals(trumpCaller.getId()));
+
+        int callerPts    = callerIsA ? teamAHandPoints : teamBHandPoints;
+        int opponentPts  = callerIsA ? teamBHandPoints : teamAHandPoints;
+        int allHandPts   = teamAHandPoints + teamBHandPoints;
+
+        if (callerPts <= opponentPts) {        // caller FALLS
+            if (callerIsA) {
+                teamB.addPoints(allHandPts);   // Team B scoops everything
+            } else {
+                teamA.addPoints(allHandPts);   // Team A scoops everything
+            }
+        } else {                               // caller SUCCEEDS
             teamA.addPoints(teamAHandPoints);
             teamB.addPoints(teamBHandPoints);
+        }
+
+        /* Clear for the next hand */
+        teamAHandPoints = 0;
+        teamBHandPoints = 0;
+    }
+
+
+
+    /**
+     * Completes the current trick, scores it, and sets up the next trick (or hand).
+     * – Winner and points are taken from *currentTrick* BEFORE we rotate turnOrder.
+     * – Only after scoring do we rotate the list so the winner leads the next trick.
+     */
+    private void completeTrick() {
+
+        /* --- 1. who won, how many points? ----------------------------------- */
+        String winnerId = currentTrick.determineWinner();
+        Player winner   = findPlayerById(winnerId);
+        int    trickPts = currentTrick.calculatePoints();          // << BEFORE reset
+
+        Team  winnerTeam = getPlayerTeam(winner);
+        boolean isLastTrick = (completedTricks.size() == 7);       // 7 → this is #8
+
+        if (isLastTrick) {
+            trickPts += 10;                                        // last-trick bonus
+            LOGGER.info("Last trick bonus (+10) to {}", winnerId);
+        }
+
+        /* update per-hand tallies */
+        if (winnerTeam == teamA) {
+            teamATricksWon++;
+            LOGGER.info("DEBUG: teamATricksWon now = " + teamATricksWon);
+
+            teamAHandPoints += trickPts;
+        } else {
+            teamBTricksWon++;
+            LOGGER.info("DEBUG: teamBTricksWon now = " + teamBTricksWon);
+
+            teamBHandPoints += trickPts;
+        }
+        LOGGER.info("Trick completed. Winner={}, Points={}, HandPts A={}, B={}",
+                winnerId, trickPts, teamAHandPoints, teamBHandPoints);
+
+        completedTricks.add(currentTrick);
+
+        /* --- 2. hand finished? ---------------------------------------------- */
+        if (isLastTrick) {
+            LOGGER.info("Hand totals before padanje – A:{}  B:{}",
+                    teamAHandPoints, teamBHandPoints);
+            if (teamATricksWon == 0 && teamAHandPoints > 0) {
+                LOGGER.info("Team A had declarations but won no tricks; clearing their hand points");
+                teamAHandPoints = 0;
+            }
+            if (teamBTricksWon == 0 && teamBHandPoints > 0) {
+                LOGGER.info("Team B had declarations but won no tricks; clearing their hand points");
+                teamBHandPoints = 0;
+            }
+
+            applyPadanjeAndUpdateScores();
+
+            // capot bonus
+            if (teamATricksWon == 8) {
+                teamA.addPoints(90);
+                LOGGER.info("Capot! Team A +90");
+            } else if (teamBTricksWon == 8) {
+                teamB.addPoints(90);
+                LOGGER.info("Capot! Team B +90");
+            }
+
+            // match finished?
+
+            checkMatchEnd();
+            if (gameState == GameState.COMPLETED) return;
+
+            /* start next hand */
+            resetHandState();
+            resetBidding();
+            startNextHand();
             return;
         }
 
-        // Determine which team called trump
-        Team trumpCallerTeam = null;
-        Team opposingTeam = null;
+        /* --- 3. prepare next trick – winner leads --------------------------- */
+        int winIdx = turnOrder.indexOf(winner);
+        Collections.rotate(turnOrder, -winIdx);    // winner becomes index 0
 
-        if (teamA.getPlayers().contains(trumpCaller)) {
-            trumpCallerTeam = teamA;
-            opposingTeam = teamB;
-        } else {
-            trumpCallerTeam = teamB;
-            opposingTeam = teamA;
-        }
+        currentLead   = winner;
+        currentPlayer = winner;
+        currentTrick  = new Trick(winnerId, trump);
 
-        // Get hand points for each team
-        int trumpCallerHandPoints = (trumpCallerTeam == teamA) ? teamAHandPoints : teamBHandPoints;
-        int opposingTeamHandPoints = (opposingTeam == teamA) ? teamAHandPoints : teamBHandPoints;
-
-        LOGGER.info("Hand complete. Trump caller team: {} points, Opposing team: {} points",
-                trumpCallerHandPoints, opposingTeamHandPoints);
-
-        // Check if the trump caller team "falls"
-        if (trumpCallerHandPoints <= opposingTeamHandPoints) {
-            LOGGER.info("Trump caller team falls! Their points are transferred to the opposing team.");
-
-            if (trumpCallerTeam == teamA) {
-                // Team A falls, add their points to Team B
-                teamB.addPoints(teamAHandPoints + teamBHandPoints);
-            } else {
-                // Team B falls, add their points to Team A
-                teamA.addPoints(teamAHandPoints + teamBHandPoints);
-            }
-        } else {
-            // No falling, add hand points normally
-            teamA.addPoints(teamAHandPoints);
-            teamB.addPoints(teamBHandPoints);
-        }
-
-        // Reset hand points for the next hand
-        teamAHandPoints = 0;
-        teamBHandPoints = 0;
-
-        LOGGER.info("After applying padanje rule - Team A total: {}, Team B total: {}",
-                teamA.getScore(), teamB.getScore());
+        LOGGER.info("Next trick will start with {}", winnerId);
     }
 
-    /**
-     * Completes the current trick, determines the winner, and sets up the next trick.
-     */
-    private void completeTrick() {
-        String winnerPlayerId = currentTrick.determineWinner();
-        Player winner = findPlayerById(winnerPlayerId);
-        if (winner != null) {
-            if (teamA.getPlayers().contains(winner)) {
-                               teamATricksWon++;
-                           } else {
-                               teamBTricksWon++;
-                           }
-            // Award trick points to winner's team for the current hand
-            Team winningTeam = getPlayerTeam(winner);
-            int trickPoints = currentTrick.calculatePoints();
-
-            // Add more detailed logging
-            LOGGER.info("Trick completed. Winner ID: {}, Points: {}",
-                    winner.getId(), trickPoints);
-
-            // Record the completed trick
-            completedTricks.add(currentTrick);
-
-            // Check if this is the last trick (but don't apply padanje yet)
-            boolean isLastTrick = completedTricks.size() == 8;
-
-            if (isLastTrick) {
-                // Add last trick bonus (10 points)
-                trickPoints += 10;
-                LOGGER.info("Last trick bonus (10 points) awarded to {}",
-                        winningTeam == teamA ? "Team A" : "Team B");
-            }
-
-            // Add points to the appropriate team
-            if (winningTeam == teamA) {
-                teamAHandPoints += trickPoints;
-                LOGGER.info("Team A now has {} hand points", teamAHandPoints);
-            } else if (winningTeam == teamB) {
-                teamBHandPoints += trickPoints;
-                LOGGER.info("Team B now has {} hand points", teamBHandPoints);
-            }
-
-            // If it was the last trick, apply padanje rule AFTER all points are counted
-            if (isLastTrick) {
-                LOGGER.info("Final hand points - Team A: {}, Team B: {}, Total: {}",
-                        teamAHandPoints, teamBHandPoints, (teamAHandPoints + teamBHandPoints));
-
-                // Apply padanje rule and update scores after all points are counted
-
-                LOGGER.info("Before applying padanje - Team A: {} hand points, {} total score, Team B: {} hand points, {} total score",
-                        teamAHandPoints, teamA.getScore(), teamBHandPoints, teamB.getScore());
-
-                applyPadanjeAndUpdateScores();
-                if (teamATricksWon == 8) {
-                    teamAHandPoints += 90;
-                    LOGGER.info("Team A won all tricks! Capot bonus of 90 awarded.");
-                } else if (teamBTricksWon == 8) {
-                    teamBHandPoints += 90;
-                    LOGGER.info("Team B won all tricks! Capot bonus of 90 awarded.");
-                }
-                // Set game state to hand complete
-                trumpCaller = null;
-                trumpCalled = false;
-                trump = null;
-                gameState = GameState.HAND_COMPLETE;
-
-                return;
-            }
-
-            // The winner leads the next trick
-            currentLead = winner;
-            currentTrick = new Trick(winner.getId(), trump);
-        }
-    }
     /**
      * Processes the current trick, determines the winner, and sets up the next trick.
      * This is a public interface to the private completeTrick functionality.
@@ -880,6 +928,14 @@ public class BelotGame {
         completeTrick();
 
         return winner;
+    }
+
+
+    private boolean isOnTeamA(Player p) {
+        // Compare _IDs_, not object references
+        return teamA.getPlayers()
+                .stream()
+                .anyMatch(t -> t.getId().equals(p.getId()));
     }
 
 
@@ -936,6 +992,47 @@ public class BelotGame {
         return completedTricks.size();
     }
 
+    /**
+     * Lets a player challenge the current hand.
+     * @return true  – challenge succeeded (infraction found, points awarded, hand ended)
+     *         false – either player already used their challenge OR no infraction existed
+     */
+    public boolean challengeHand(String playerId) {
+
+        Player challenger = findPlayerById(playerId);
+        if (challengeUsed.getOrDefault(playerId, false)) return false;
+        challengeUsed.put(playerId, true);
+
+        if (!anyFoul()) return false;                 // nobody fouled  ✗
+
+        Team challengerTeam = getPlayerTeam(challenger);
+
+        /* ---------- new success rule -------------------------------------- */
+        boolean success =
+                bothTeamsFouled()                     // either side fouled
+                        || !foulingTeams.contains(challengerTeam); // only opponents fouled
+        /* ------------------------------------------------------------------ */
+
+        if (!success) {
+            LOGGER.info("{} challenged but their own team was the only one that fouled", playerId);
+            return false;                             // quota spent, nothing else
+        }
+
+        /* ---- award 162 + declarations to the challenger’s team ---------- */
+        int declPts = (challengerTeam == teamA) ? teamADeclPoints : teamBDeclPoints;
+        int total   = FULL_HAND_POINTS + declPts;
+
+        challengerTeam.addPoints(total);
+        LOGGER.info("Challenge SUCCESS – {} pts (162+decl) awarded to {}",
+                total, challengerTeam == teamA ? "Team A" : "Team B");
+        checkMatchEnd();           // NEW
+        if (gameState == GameState.COMPLETED) return true;
+
+        resetHandState();
+        resetBidding();
+        startNextHand();
+        return true;
+    }
 
 
     /**
@@ -1022,8 +1119,68 @@ public class BelotGame {
         return hasBela || sequencePoints.isPresent();
     }
 
+    /** Move the dealer one seat clockwise and rotate turnOrder accordingly. */
+    private void selectNextDealer() {
+        int newDealerIndex = (turnOrder.indexOf(dealer) + 1) % turnOrder.size();
+        dealer = turnOrder.get(newDealerIndex);
 
+        // Rotate the seating list so that the player after the new dealer will bid first
+        List<Player> rotated = new ArrayList<>();
+        for (int i = 0; i < turnOrder.size(); i++) {
+            int idx = (newDealerIndex + 1 + i) % turnOrder.size();
+            rotated.add(turnOrder.get(idx));
+        }
+        turnOrder.clear();
+        turnOrder.addAll(rotated);
 
+        currentLead = turnOrder.getFirst();
+
+        logTurnOrder("Dealer rotated to " + dealer.getId());
+
+    }
+    @JsonIgnore
+    public void checkMatchEnd() {
+        if (gameState == GameState.COMPLETED) return;     // already finished
+
+        int a = teamA.getScore();
+        int b = teamB.getScore();
+
+        if (a < TARGET_SCORE && b < TARGET_SCORE) return; // nobody crossed yet
+
+        if (a != b) {                     // higher score wins immediately
+            gameState = GameState.COMPLETED;
+            LOGGER.info("Match over – winner: {}", a > b ? "Team A" : "Team B");
+        } else {
+            // scores tied but both ≥ target – keep playing extra hands
+            // (state stays RUNNING; UI will show “tiebreaker” automatically)
+            LOGGER.info("Scores tied at >= target – starting tie-breaker hand");
+        }
+    }
+    public boolean hasPlayerChallenged(Player p) {
+        return challengeUsed.getOrDefault(p.getId(), false);
+    }
+    @JsonIgnore
+    public List<Player> getPlayers() {
+        // keep allocation cheap: the list is tiny (4)
+        List<Player> all = new ArrayList<>(teamA.getPlayers());
+        all.addAll(teamB.getPlayers());
+        return all;
+    }
+
+    /** Starts the next hand with the next dealer in sequence (no random pick). */
+    public void startNextHand() {
+        selectNextDealer();      // clockwise dealer advance
+
+        deck = new Deck();
+        deck.shuffle();
+        deck.dealInitialHands(turnOrder);   // 6 cards each
+        talon = deck.dealTalon();           // 2 cards face-down
+
+        gameState = GameState.BIDDING;
+
+        logTurnOrder("New hand — dealer " + dealer.getId());
+        logScores("Start of hand");
+    }
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
@@ -1035,6 +1192,36 @@ public class BelotGame {
                 .append(", completedTricks=").append(completedTricks.size())
                 .append("]");
         return sb.toString();
+    }
+    /** INFO-level dump of current seating order (dealer in [ ]). */
+    private void logTurnOrder(String msg) {
+        String order = turnOrder.stream()
+                .map(p -> (p.equals(dealer) ? "[" + p.getId() + "]" : p.getId()))
+                .collect(Collectors.joining(" → "));
+        LOGGER.info("{}  |  Turn order: {}", msg, order);
+    }
+
+    /** INFO-level snapshot of hand points and running scores. */
+    private void logScores(String msg) {
+        LOGGER.info("{}  |  HandPts A:{}  B:{}   Total A:{}  B:{}",
+                msg, teamAHandPoints, teamBHandPoints,
+                teamA.getScore(),    teamB.getScore());
+    }
+    @JsonIgnore                  // don’t let Jackson persist this
+    public String getWinnerTeamId() {
+        Team winner = getWinner();          // ← you already have this method
+        if (winner == null) return null;    // tie / still running
+        return winner == teamA ? "A" : "B";
+    }
+
+    @JsonIgnore
+    public void cancelMatch() {
+        if (gameState == GameState.COMPLETED) return;   // ignore finished games
+        gameState = GameState.CANCELLED;
+    }
+    @JsonIgnore
+    public void setLastActivity(Instant t) {
+        this.lastActivity = t;
     }
 
 }

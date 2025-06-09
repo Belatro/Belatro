@@ -1,12 +1,10 @@
 package backend.belatro.controllers;
 
-import backend.belatro.dtos.BidMsg;
-import backend.belatro.dtos.PlayCardMsg;
-import backend.belatro.dtos.PrivateGameView;
-import backend.belatro.dtos.PublicGameView;
+import backend.belatro.dtos.*;
 import backend.belatro.enums.MoveType;
 import backend.belatro.events.GameStartedEvent;
 import backend.belatro.events.GameStateChangedEvent;
+import backend.belatro.events.TurnStartedEvent;
 import backend.belatro.pojo.gamelogic.BelotGame;
 import backend.belatro.pojo.gamelogic.Bid;
 import backend.belatro.pojo.gamelogic.Card;
@@ -44,7 +42,7 @@ public class GameSocketController {
     }
     @EventListener
     public void onGameStateChanged(GameStateChangedEvent evt) {
-        fanOutGameState(evt.getGameId());
+        fanOutGameState(evt.gameId());
     }
 
     private void fanOutGameState(BelotGame game) {
@@ -108,6 +106,21 @@ public class GameSocketController {
 
         fanOutGameState(game);
     }
+    @MessageMapping("/games/{id}/challenge")
+    public void challenge(@DestinationVariable String id, ChallengeMsg msg) {
+
+        BelotGameService.ChallengeOutcome res = svc.challengeHand(id, msg.playerId());
+
+        // write the move with the extra field
+        matchService.recordMove(
+                id,
+                MoveType.CHALLENGE,
+                Map.of("playerId", msg.playerId(),
+                        "success",  res.success()),
+                0.0);
+
+        fanOutGameState(res.game());
+    }
 
     @MessageMapping("/games/{id}/refresh")
     public void refresh(@DestinationVariable String id, Principal p) {
@@ -162,6 +175,22 @@ public class GameSocketController {
         return svc.toPrivateView(game, currentPlayer);
     }
 
+    @MessageMapping("/games/{id}/cancel")
+    public void cancel(@DestinationVariable String id, CancelMsg body,
+                       Principal principal) {
+
+        BelotGame g = svc.cancelMatch(id, principal.getName());
+        fanOutGameState(g);
+
+        // ️✂️  server-side disconnect for every session in this room
+        bus.convertAndSend(
+                "/topic/games/" + id,
+                "DISCONNECT");     // or just rely on clients to close voluntarily
+    }
+    @EventListener
+    public void onTurnStarted(TurnStartedEvent evt) {
+        fanOutGameState(evt.matchId());   // just reuse the helper you already have
+    }
 
     private void fanOut(String gameId, BelotGame game) {
         PublicGameView pub = svc.toPublicView(game);

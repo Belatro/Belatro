@@ -65,5 +65,11 @@ public class MatchController {
         return ResponseEntity.ok(matchService.getStructuredMoves(id));
     }
 
+    @GetMapping("/getmatchbylobbyid/{lobbyId}")
+    public ResponseEntity<MatchDTO> getMatchByLobbyId(@PathVariable String lobbyId) {
+        MatchDTO match = matchService.getMatchByLobbyId(lobbyId);
+        return match != null ? ResponseEntity.ok(match)
+                : ResponseEntity.notFound().build();
+    }
 
 }
