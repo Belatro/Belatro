@@ -262,7 +262,18 @@ public class MatchServiceImpl implements IMatchService {
     }
 
 
+    @Transactional
+    @Override
+    public void finaliseMatch(String matchId,
+                              String winnerString,   // “Team A wins 1001–777”
+                              Instant endTs) {
 
+        matchRepo.findById(matchId).ifPresent(match -> {
+            match.setResult(winnerString);
+            match.setEndTime(Date.from(endTs));
+            matchRepo.save(match);          // one write, in-transaction
+        });
+    }
 
 
     @Override

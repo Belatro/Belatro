@@ -19,6 +19,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -105,30 +107,44 @@ public class BelotGameService {
     }
 
 
+    // BelotGameService
+
     public void save(BelotGame game) {
         BelotGame before = redis.opsForValue().get(KEY_PREFIX + game.getGameId());
 
-        redis.opsForValue()
-                .set(KEY_PREFIX + game.getGameId(), game);
+        redis.opsForValue().set(KEY_PREFIX + game.getGameId(), game);
 
-
-        // a) state really changed?
         if (before != null && before.getGameState() != game.getGameState()) {
             eventPublisher.publishEvent(new GameStateChangedEvent(game.getGameId()));
         }
 
-        // b) did we just enter a fresh BIDDING phase?  (means startNextHand ran)
+        boolean justFinished = game.getGameState() == GameState.COMPLETED &&
+                (before == null || before.getGameState() != GameState.COMPLETED);
+
+        if (justFinished) {
+            String winnerLine = String.format(
+                    "%s wins %d–%d",
+                    game.getTeamAScore() > game.getTeamBScore() ? "Team A" : "Team B",
+                    game.getTeamAScore(), game.getTeamBScore());
+
+            matchService.finaliseMatch(game.getGameId(), winnerLine, Instant.now());
+
+
+            redis.expire(KEY_PREFIX + game.getGameId(), Duration.ofMinutes(3)); // grace period
+        }
+
+
         if (before != null
                 && before.getGameState() != GameState.BIDDING
                 && game.getGameState()   == GameState.BIDDING) {
 
             eventPublisher.publishEvent(new TurnStartedEvent(
                     game.getGameId(),
-                    game.getCurrentLead().getId(),      // first bidder of new hand
+                    game.getCurrentLead().getId(),
                     GameState.BIDDING));
         }
-
     }
+
 
     private BelotGame getOrThrow(String gameId) {
         BelotGame g = get(gameId);
