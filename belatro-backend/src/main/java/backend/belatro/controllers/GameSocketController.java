@@ -4,6 +4,7 @@ import backend.belatro.dtos.*;
 import backend.belatro.enums.MoveType;
 import backend.belatro.events.GameStartedEvent;
 import backend.belatro.events.GameStateChangedEvent;
+import backend.belatro.events.TurnStartedEvent;
 import backend.belatro.pojo.gamelogic.BelotGame;
 import backend.belatro.pojo.gamelogic.Bid;
 import backend.belatro.pojo.gamelogic.Card;
@@ -185,6 +186,10 @@ public class GameSocketController {
         bus.convertAndSend(
                 "/topic/games/" + id,
                 "DISCONNECT");     // or just rely on clients to close voluntarily
+    }
+    @EventListener
+    public void onTurnStarted(TurnStartedEvent evt) {
+        fanOutGameState(evt.matchId());   // just reuse the helper you already have
     }
 
     private void fanOut(String gameId, BelotGame game) {

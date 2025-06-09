@@ -49,6 +49,10 @@ public class BelotGameService {
         BelotGame game = new BelotGame(gameId, teamA, teamB);
         game.startGame(); // Deals cards, sets bidding phase, etc.
         save(game);
+        eventPublisher.publishEvent(new TurnStartedEvent(
+                gameId,
+                game.getCurrentLead().getId(),
+                GameState.BIDDING));
 
         eventPublisher.publishEvent(new GameStartedEvent(this, gameId));
         System.out.println("Published GameStartedEvent for gameId: " + gameId); // For logging
@@ -102,9 +106,27 @@ public class BelotGameService {
 
 
     public void save(BelotGame game) {
+        BelotGame before = redis.opsForValue().get(KEY_PREFIX + game.getGameId());
+
         redis.opsForValue()
                 .set(KEY_PREFIX + game.getGameId(), game);
-        eventPublisher.publishEvent(new GameStateChangedEvent(game.getGameId()));
+
+
+        // a) state really changed?
+        if (before != null && before.getGameState() != game.getGameState()) {
+            eventPublisher.publishEvent(new GameStateChangedEvent(game.getGameId()));
+        }
+
+        // b) did we just enter a fresh BIDDING phase?  (means startNextHand ran)
+        if (before != null
+                && before.getGameState() != GameState.BIDDING
+                && game.getGameState()   == GameState.BIDDING) {
+
+            eventPublisher.publishEvent(new TurnStartedEvent(
+                    game.getGameId(),
+                    game.getCurrentLead().getId(),      // first bidder of new hand
+                    GameState.BIDDING));
+        }
 
     }
 
