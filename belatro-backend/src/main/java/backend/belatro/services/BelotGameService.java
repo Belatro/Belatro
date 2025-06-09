@@ -8,6 +8,7 @@ import backend.belatro.dtos.PublicGameView;
 import backend.belatro.enums.MoveType;
 import backend.belatro.events.GameStartedEvent;
 import backend.belatro.events.GameStateChangedEvent;
+import backend.belatro.events.TurnStartedEvent;
 import backend.belatro.models.User;
 import backend.belatro.pojo.gamelogic.*;
 import backend.belatro.pojo.gamelogic.enums.GameState;
@@ -34,6 +35,7 @@ public class BelotGameService {
     private final ApplicationEventPublisher eventPublisher; // Inject publisher
     private final UserRepo userRepository;
     private final IMatchService matchService;
+
 
     public BelotGameService(RedisTemplate<String, BelotGame> redis, ApplicationEventPublisher eventPublisher, UserRepo userRepository, IMatchService matchService) {
         this.redis = redis;
@@ -78,6 +80,10 @@ public class BelotGameService {
 
         game.playCard(p, card, declareBela);
         save(game);
+        eventPublisher.publishEvent(new TurnStartedEvent(gameId,
+                game.getCurrentPlayer().getId(),
+                GameState.PLAYING));
+
         return game;
     }
 
@@ -86,6 +92,11 @@ public class BelotGameService {
         BelotGame game = getOrThrow(gameId);
         game.placeBid(bid);
         save(game);
+        if (game.getGameState() == GameState.BIDDING) {
+            eventPublisher.publishEvent(new TurnStartedEvent(gameId,
+                    game.getCurrentLead().getId(),
+                    GameState.BIDDING));
+        }
         return game;
     }
 
@@ -94,6 +105,7 @@ public class BelotGameService {
         redis.opsForValue()
                 .set(KEY_PREFIX + game.getGameId(), game);
         eventPublisher.publishEvent(new GameStateChangedEvent(game.getGameId()));
+
     }
 
     private BelotGame getOrThrow(String gameId) {

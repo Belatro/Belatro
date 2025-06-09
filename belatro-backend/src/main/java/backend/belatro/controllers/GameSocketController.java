@@ -41,7 +41,7 @@ public class GameSocketController {
     }
     @EventListener
     public void onGameStateChanged(GameStateChangedEvent evt) {
-        fanOutGameState(evt.getGameId());
+        fanOutGameState(evt.gameId());
     }
 
     private void fanOutGameState(BelotGame game) {
@@ -174,6 +174,18 @@ public class GameSocketController {
         return svc.toPrivateView(game, currentPlayer);
     }
 
+    @MessageMapping("/games/{id}/cancel")
+    public void cancel(@DestinationVariable String id, CancelMsg body,
+                       Principal principal) {
+
+        BelotGame g = svc.cancelMatch(id, principal.getName());
+        fanOutGameState(g);
+
+        // ️✂️  server-side disconnect for every session in this room
+        bus.convertAndSend(
+                "/topic/games/" + id,
+                "DISCONNECT");     // or just rely on clients to close voluntarily
+    }
 
     private void fanOut(String gameId, BelotGame game) {
         PublicGameView pub = svc.toPublicView(game);

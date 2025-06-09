@@ -697,7 +697,7 @@ public class BelotGame {
      * @param card The card being played
      * @return true if the play is valid, false otherwise
      */
-    private boolean isValidPlay(Player player, Card card) {
+    public boolean isValidPlay(Player player, Card card) {
         if (currentTrick.getPlays().isEmpty()) {
             return true;
         }
