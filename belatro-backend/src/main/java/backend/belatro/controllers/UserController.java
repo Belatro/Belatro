@@ -85,4 +85,10 @@ public class UserController {
                 matchService.getMatchSummariesByPlayer(playerId, pg);
         return ResponseEntity.ok(summaries);
     }
+    @PostMapping("/{id}/request-forget")
+    public ResponseEntity<Void> requestForget(@PathVariable String id) {
+        userService.requestAccountDeletionById(id);
+        return ResponseEntity.accepted().build();
+    }
+
 }

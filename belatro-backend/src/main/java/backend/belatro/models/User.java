@@ -25,4 +25,5 @@ public class User {
     private Date lastLogin;
     private int gamesPlayed;
     private Set<Role> roles = Set.of(Role.ROLE_USER);
+    private boolean deletionRequested = false;
 }

@@ -69,9 +69,12 @@ public class SecurityConfig {
     SecurityFilterChain publicAuthChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher("/api/auth/**")
-                .cors(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
-                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+                .cors(Customizer.withDefaults())
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .anyRequest().permitAll()
+                );
         return http.build();
     }
 
@@ -87,6 +90,10 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authenticationProvider(authProvider)
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/auth/**")                       // ← new line
+                        .permitAll()
+                        .requestMatchers("/error").permitAll()              // ← add this
+
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/ws/**","/index.html")
                         .permitAll()

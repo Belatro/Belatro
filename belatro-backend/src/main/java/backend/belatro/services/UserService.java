@@ -1,6 +1,7 @@
 package backend.belatro.services;
 
 
+import backend.belatro.dtos.UserDto;
 import backend.belatro.dtos.UserUpdateDTO;
 import backend.belatro.exceptions.UserNotFoundException;
 import backend.belatro.models.User;
@@ -17,6 +18,7 @@ import java.nio.file.AccessDeniedException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class UserService {
@@ -28,6 +30,20 @@ public class UserService {
 
     public List<User> findAll() {
         return userRepo.findAll();
+    }
+
+    public List<UserDto> listAllUsers() {
+        return
+                findAll()                // assume this returns List<User>
+                .stream()
+                .map(u -> new UserDto(
+                        u.getId(),
+                        u.getUsername(),
+                        u.getEmail(),
+                        u.getRoles(),
+                        u.isDeletionRequested()
+                ))
+                .collect(Collectors.toList());
     }
 
     public Optional<User> findById(String id) {
@@ -77,6 +93,13 @@ public class UserService {
                 .orElseThrow(() ->
                         new UsernameNotFoundException(auth.getName()));
     }
-}
+    @Transactional
+    public void requestAccountDeletionById(String userId) {
+        User u = findById(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
+        u.setDeletionRequested(true);
+        userRepo.save(u);
+    }
+    }
 
 

@@ -485,7 +485,7 @@ public class MatchServiceImpl implements IMatchService {
     }
 
     private User toUserEntity(LobbyDTO.UserSimpleDTO dto) {
-        System.out.println("Converting UserSimpleDTO to User. DTO: " + dto);
+//        System.out.println("Converting UserSimpleDTO to User. DTO: " + dto);
         User user = new User();
         user.setId(dto.getId());
         user.setUsername(dto.getUsername());
@@ -494,7 +494,7 @@ public class MatchServiceImpl implements IMatchService {
     }
 
     private MatchDTO toDTO(Match match) {
-        System.out.println("Converting Match to MatchDTO. Match id: " + match.getId());
+//        System.out.println("Converting Match to MatchDTO. Match id: " + match.getId());
         MatchDTO dto = new MatchDTO();
         dto.setId(match.getId());
         dto.setGameMode(match.getGameMode());
@@ -520,16 +520,16 @@ public class MatchServiceImpl implements IMatchService {
     }
 
     private LobbyDTO.UserSimpleDTO toUserSimpleDTO(User user) {
-        System.out.println("Converting User to UserSimpleDTO. User id: " + user.getId());
+//        System.out.println("Converting User to UserSimpleDTO. User id: " + user.getId());
         LobbyDTO.UserSimpleDTO simple = new LobbyDTO.UserSimpleDTO();
         simple.setId(user.getId());
         simple.setUsername(user.getUsername());
-        System.out.println("Converted UserSimpleDTO: " + simple);
+//        System.out.println("Converted UserSimpleDTO: " + simple);
         return simple;
     }
 
     private LobbyDTO toLobbyDTO(Lobbies lobby) {
-        System.out.println("Converting Lobbies to LobbyDTO. Lobby id: " + lobby.getId());
+//        System.out.println("Converting Lobbies to LobbyDTO. Lobby id: " + lobby.getId());
         LobbyDTO dto = new LobbyDTO();
         BeanUtils.copyProperties(lobby, dto);
         if (lobby.getHostUser() != null) {
@@ -538,7 +538,7 @@ public class MatchServiceImpl implements IMatchService {
         dto.setTeamAPlayers(MappingUtils.mapList(lobby.getTeamAPlayers(), this::toUserSimpleDTO));
         dto.setTeamBPlayers(MappingUtils.mapList(lobby.getTeamBPlayers(), this::toUserSimpleDTO));
         dto.setUnassignedPlayers(MappingUtils.mapList(lobby.getUnassignedPlayers(), this::toUserSimpleDTO));
-        System.out.println("Converted LobbyDTO: " + dto);
+//        System.out.println("Converted LobbyDTO: " + dto);
         return dto;
     }
 
