@@ -54,7 +54,7 @@ public class TurnTimerService {
     /** keep at most one timer per matchId */
     private final Map<String, ScheduledFuture<?>> timers = new ConcurrentHashMap<>();
 
-    private static final Duration TURN_TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration TURN_TIMEOUT = Duration.ofMillis(30000);
 
     @EventListener
     public void onGameStateChanged(GameStateChangedEvent e) {

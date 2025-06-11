@@ -1,9 +1,9 @@
 package backend.belatro.services;
 
-import backend.belatro.dtos.HandDTO;
-import backend.belatro.dtos.MatchDTO;
-import backend.belatro.dtos.MoveDTO;
+import backend.belatro.dtos.*;
 import backend.belatro.enums.MoveType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -33,5 +33,22 @@ public interface IMatchService {
     MatchDTO getMatchByLobbyId(String lobbyId);
 
 
+    @Transactional(readOnly = true)
+    MatchHistoryDTO getMatchHistory(String matchId);
 
+    @Transactional(readOnly = true)
+    Page<MatchHistoryDTO> getMatchHistoryByPlayer(String playerId,
+                                                  Pageable pageable);
+
+    @Transactional(readOnly = true)
+    Page<PlayerMatchHistoryDTO> getFinishedMatchHistoryByPlayer(
+            String playerId,
+            Pageable pageable
+    );
+
+    @Transactional(readOnly = true)
+    Page<PlayerMatchSummaryDTO> getMatchSummariesByPlayer(
+            String playerId,
+            Pageable pageable
+    );
 }

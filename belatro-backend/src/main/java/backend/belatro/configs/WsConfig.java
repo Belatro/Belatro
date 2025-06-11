@@ -54,7 +54,8 @@ public class WsConfig implements WebSocketMessageBrokerConfigurer {
                 .addEndpoint("/ws")
                 .setAllowedOriginPatterns("*")
                 .addInterceptors(rateLimitingHandshakeInterceptor);
-        registry.addEndpoint("/ws-native")
+        registry
+                .addEndpoint("/ws-native")
                 .setAllowedOriginPatterns("*")
                 .addInterceptors(rateLimitingHandshakeInterceptor)
                 .setHandshakeHandler(new DefaultHandshakeHandler());
