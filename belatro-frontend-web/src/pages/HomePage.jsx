@@ -3,6 +3,7 @@ import CardComponent from "../components/CardComponent";
 import LobbyModeModal from "../components/LobbyModeModal";
 import { useNavigate } from "react-router-dom";
 import { createLobby } from "../services/lobbyService";
+import { joinRankedQueue, leaveRankedQueue } from "../services/rankedService";
 import "../App.css";
 
 const HomePage = () => {
@@ -15,7 +16,15 @@ const HomePage = () => {
     setShowModal(true);
   };
 
-  const handleCloseModal = () => {
+  const handleCloseModal = async () => {
+    if (mode === "Ranked") {
+      try {
+        const token = localStorage.getItem("token");
+        await leaveRankedQueue(token);
+      } catch (err) {
+        console.error("Failed to leave ranked queue:", err);
+      }
+    }
     setShowModal(false);
   };
 
@@ -29,10 +38,10 @@ const HomePage = () => {
         status: "WAITING",
         hostUser: {
           id: userId,
-          username: username
+          username: username,
         },
         privateLobby: mode === "Play Friends",
-        password: mode === "Play Friends" ? password : null
+        password: mode === "Play Friends" ? password : null,
       });
 
       if (mode === "Play Friends" && password) {
@@ -40,6 +49,7 @@ const HomePage = () => {
       }
 
       navigate("/lobby", { state: { mode, lobbyId: newLobby.id } });
+
     } catch (error) {
       console.error("Failed to create lobby:", error);
       alert("Could not create lobby. Please try again.");
@@ -64,9 +74,13 @@ const HomePage = () => {
     <div>
       <div className="home-container">
         <br />
-        <div className="button-container">
-          <button className="game-button" disabled onClick={() => handleGameModeClick("Ranked")}>RANKED MODE</button>
-          <button className="game-button" onClick={() => handleGameModeClick("Play Friends")}>PLAY FRIENDS</button>
+        <div className="home-button-container">
+          <button className="home-button ranked-button" onClick={() => handleGameModeClick("Ranked")}>
+            RANKED MODE
+          </button>
+          <button className="home-button friends-button" onClick={() => handleGameModeClick("Play Friends")}>
+            PLAY FRIENDS
+          </button>
         </div>
 
         <div className="card-container">

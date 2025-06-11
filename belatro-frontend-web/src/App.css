@@ -106,6 +106,32 @@ body {
   font-weight: bold;
 }
 
+/* novi home page botuni jer se oni gori koriste negi :/ */
+.home-button-container {
+  display: flex;
+  justify-content: center;
+  gap: 100px;
+  margin-top: 20px;
+}
+
+.home-button {
+  background-color: #27232a;
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+  width: 300px;
+  padding: 16px 40px;
+  border: none;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease-in-out;
+}
+
+.home-button:hover {
+  background-color: #4b454f;
+}
+
+
 /*LOG REGI*/
 
 .lr-page {
