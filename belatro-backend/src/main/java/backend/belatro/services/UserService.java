@@ -6,9 +6,14 @@ import backend.belatro.exceptions.UserNotFoundException;
 import backend.belatro.models.User;
 import backend.belatro.repos.UserRepo;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.file.AccessDeniedException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -59,5 +64,19 @@ public class UserService {
                 rawUsername == null ? null : rawUsername.trim().toLowerCase(Locale.ROOT)
         );
     }
+    public User currentUser() throws AccessDeniedException {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        if (auth == null || !auth.isAuthenticated()
+                || auth instanceof AnonymousAuthenticationToken) {
+            throw new AccessDeniedException("Not authenticated");
+        }
+
+        // ‘getName()’ is the username by default
+        return userRepo.findByUsername(auth.getName())
+                .orElseThrow(() ->
+                        new UsernameNotFoundException(auth.getName()));
+    }
 }
+
 

@@ -1,7 +1,10 @@
 package backend.belatro.dtos;
 
 import backend.belatro.enums.lobbyStatus;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.util.Date;
 import java.util.List;
 
@@ -20,6 +23,8 @@ public class LobbyDTO {
     private String password;
 
     @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
     public static class UserSimpleDTO {
         private String id;
         private String username;
