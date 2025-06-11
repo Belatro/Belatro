@@ -11,8 +11,10 @@ import backend.belatro.repos.MatchMoveRepo;
 import backend.belatro.repos.MatchRepo;
 import backend.belatro.services.IMatchService;
 import backend.belatro.util.MappingUtils;
+import backend.belatro.util.MatchUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,7 @@ public class MatchServiceImpl implements IMatchService {
     private static final int PLAYS_PER_HAND  = 32;
     private static final int PLAYS_PER_TRICK = 4;
     private static final AtomicLong GLOBAL_MOVE_SEQUENCE = new AtomicLong();
+
 
     @Autowired
     public MatchServiceImpl(MatchRepo matchRepo, MatchMoveRepo matchMoveRepo) {
@@ -262,7 +265,18 @@ public class MatchServiceImpl implements IMatchService {
     }
 
 
+    @Transactional
+    @Override
+    public void finaliseMatch(String matchId,
+                              String winnerString,   // “Team A wins 1001–777”
+                              Instant endTs) {
 
+        matchRepo.findById(matchId).ifPresent(match -> {
+            match.setResult(winnerString);
+            match.setEndTime(Date.from(endTs));
+            matchRepo.save(match);          // one write, in-transaction
+        });
+    }
 
 
     @Override
@@ -281,7 +295,139 @@ public class MatchServiceImpl implements IMatchService {
                 .orElseThrow(() -> new NotFoundException("Match for lobby " + lobbyId + " not found"));
     }
 
+    @Transactional(readOnly = true)
+    @Override
+    public MatchHistoryDTO getMatchHistory(String matchId) {
+        var match = getMatch(matchId);
+        if (match == null) {
+            throw new NotFoundException("Match not found: " + matchId);
+        }
+        List<MoveDTO> moves      = getMoves(matchId);
+        List<HandDTO> structured = getStructuredMoves(matchId);
+        return new MatchHistoryDTO(match, moves, structured);
+    }
 
+    @Transactional(readOnly = true)
+    @Override
+    public Page<MatchHistoryDTO> getMatchHistoryByPlayer(String playerId,
+                                                         Pageable pageable) {
+        Page<Match> matches = matchRepo
+                .findByPlayerIdInTeams(playerId, pageable);
+
+        return matches.map(m -> {
+            // use your existing toDTO instead of MatchMapper
+            MatchDTO matchDto = toDTO(m);
+
+            List<MoveDTO> rawMoves = getMoves(m.getId());
+            List<HandDTO>  hands    = getStructuredMoves(m.getId());
+
+            return new MatchHistoryDTO(matchDto, rawMoves, hands);
+        });
+    }
+    @Override
+    @Transactional(readOnly = true)
+    public Page<PlayerMatchHistoryDTO> getFinishedMatchHistoryByPlayer(
+            String playerId,
+            Pageable pageable
+    ) {
+        int skip      = (int) pageable.getOffset();      // page * size
+        int toCollect = pageable.getPageSize();
+
+        List<PlayerMatchHistoryDTO> allForPlayer = new ArrayList<>();
+
+        // We’ll page through finished matches until we’ve collected enough
+        int repoPage = 0;
+        while (allForPlayer.size() < skip + toCollect) {
+            Page<Match> page = matchRepo.findByResultIsNotNull(
+                    PageRequest.of(repoPage++, toCollect, Sort.by("endTime").descending())
+            );
+            if (page.isEmpty()) break;
+
+            for (Match m : page.getContent()) {
+                // in‐memory check of DBRef ids as strings
+                boolean onA = m.getTeamA()
+                        .stream()
+                        .anyMatch(u -> u.getId().equals(playerId));
+                boolean onB = m.getTeamB()
+                        .stream()
+                        .anyMatch(u -> u.getId().equals(playerId));
+                if (!(onA||onB)) continue;
+
+                // build your DTO
+                MatchDTO dto        = toDTO(m);
+                List<MoveDTO> raw   = getMoves(m.getId());
+                List<HandDTO> hands = getStructuredMoves(m.getId());
+                MatchHistoryDTO hist= new MatchHistoryDTO(dto, raw, hands);
+                String outcome      = MatchUtils.isPlayerOnWinningTeam(dto,playerId)
+                        ? "WIN" : "LOSS";
+
+                allForPlayer.add(new PlayerMatchHistoryDTO(hist, outcome));
+            }
+            if (!page.hasNext()) break;
+        }
+
+        // Now materialize just the slice the user asked for:
+        List<PlayerMatchHistoryDTO> pageContent = allForPlayer.stream()
+                .skip(skip)
+                .limit(toCollect)
+                .toList();
+
+        return new PageImpl<>(
+                pageContent,
+                pageable,
+                allForPlayer.size()
+        );
+    }
+    @Transactional(readOnly = true)
+    @Override
+    public Page<PlayerMatchSummaryDTO> getMatchSummariesByPlayer(
+            String playerId,
+            Pageable pageable
+    ) {
+        int skip      = (int) pageable.getOffset();
+        int limit     = pageable.getPageSize();
+        List<PlayerMatchSummaryDTO> allSummaries = new ArrayList<>();
+
+        int repoPage = 0;
+        // keep loading pages of finished matches until we have enough
+        while (allSummaries.size() < skip + limit) {
+            Page<Match> page = matchRepo.findByResultIsNotNull(
+                    PageRequest.of(repoPage++, limit, Sort.by("endTime").descending())
+            );
+            if (page.isEmpty()) break;
+
+            for (Match m : page.getContent()) {
+                boolean onA = m.getTeamA()
+                        .stream()
+                        .anyMatch(u -> u.getId().equals(playerId));
+                boolean onB = m.getTeamB()
+                        .stream()
+                        .anyMatch(u -> u.getId().equals(playerId));
+                if (!onA && !onB) continue;
+
+                boolean won = MatchUtils.isPlayerOnWinningTeam(toDTO(m), playerId);
+                allSummaries.add(new PlayerMatchSummaryDTO(
+                        m.getId(),
+                        m.getEndTime().toInstant(),
+                        m.getResult(),
+                        won ? "WIN" : "LOSS",
+                        m.getGameMode()
+                ));
+            }
+            if (!page.hasNext()) break;
+        }
+
+        List<PlayerMatchSummaryDTO> pageContent = allSummaries.stream()
+                .skip(skip)
+                .limit(limit)
+                .toList();
+
+        return new PageImpl<>(
+                pageContent,
+                pageable,
+                allSummaries.size()
+        );
+    }
 
     private MoveDTO toMoveDTO(MatchMove mm) {
         return new MoveDTO(

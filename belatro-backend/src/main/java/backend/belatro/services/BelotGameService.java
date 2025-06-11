@@ -19,6 +19,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -80,7 +82,14 @@ public class BelotGameService {
                               boolean declareBela) {
 
         BelotGame game = getOrThrow(gameId);
-        Player p = game.findPlayerById(playerId);   // helper already in your POJO
+        Player p = game.findPlayerById(playerId);
+        boolean isTurn = (game.getGameState() == GameState.BIDDING && p.getId().equals(game.getCurrentLead().getId()))
+                || (game.getGameState() == GameState.PLAYING && game.getCurrentPlayer() != null
+                && p.getId().equals(game.getCurrentPlayer().getId()));
+        if (!isTurn) {
+            LOGGER.warn("Rejected out-of-turn play by {}", playerId);
+            return game; // or throw an exception to inform the client
+        }
 
         game.playCard(p, card, declareBela);
         save(game);
@@ -94,6 +103,13 @@ public class BelotGameService {
     @GameAction
     public BelotGame placeBid(String gameId, Bid bid) {
         BelotGame game = getOrThrow(gameId);
+        Player p = game.findPlayerById(bid.getPlayer().getId());
+        boolean isTurn = game.getGameState() == GameState.BIDDING &&
+                p.getId().equals(game.getCurrentLead().getId());
+        if (!isTurn) {
+            LOGGER.warn("Rejected out-of-turn bid by {}", p.getId());
+            return game;
+        }
         game.placeBid(bid);
         save(game);
         if (game.getGameState() == GameState.BIDDING) {
@@ -105,30 +121,44 @@ public class BelotGameService {
     }
 
 
+    // BelotGameService
+
     public void save(BelotGame game) {
         BelotGame before = redis.opsForValue().get(KEY_PREFIX + game.getGameId());
 
-        redis.opsForValue()
-                .set(KEY_PREFIX + game.getGameId(), game);
+        redis.opsForValue().set(KEY_PREFIX + game.getGameId(), game);
 
-
-        // a) state really changed?
         if (before != null && before.getGameState() != game.getGameState()) {
             eventPublisher.publishEvent(new GameStateChangedEvent(game.getGameId()));
         }
 
-        // b) did we just enter a fresh BIDDING phase?  (means startNextHand ran)
+        boolean justFinished = game.getGameState() == GameState.COMPLETED &&
+                (before == null || before.getGameState() != GameState.COMPLETED);
+
+        if (justFinished) {
+            String winnerLine = String.format(
+                    "%s wins %d–%d",
+                    game.getTeamAScore() > game.getTeamBScore() ? "Team A" : "Team B",
+                    game.getTeamAScore(), game.getTeamBScore());
+
+            matchService.finaliseMatch(game.getGameId(), winnerLine, Instant.now());
+
+
+            redis.expire(KEY_PREFIX + game.getGameId(), Duration.ofMinutes(3)); // grace period
+        }
+
+
         if (before != null
                 && before.getGameState() != GameState.BIDDING
                 && game.getGameState()   == GameState.BIDDING) {
 
             eventPublisher.publishEvent(new TurnStartedEvent(
                     game.getGameId(),
-                    game.getCurrentLead().getId(),      // first bidder of new hand
+                    game.getCurrentLead().getId(),
                     GameState.BIDDING));
         }
-
     }
+
 
     private BelotGame getOrThrow(String gameId) {
         BelotGame g = get(gameId);
@@ -202,14 +232,14 @@ public class BelotGameService {
                     );
                 })
                 .toList();
-
+        Trick trickForDisplay = getTrickForDisplay(g);
 
 
         return new PublicGameView(
                 g.getGameId(),
                 g.getGameState(),
                 safe,
-                g.getCurrentTrick(),
+                trickForDisplay,
                 g.getTeamAScore(),
                 g.getTeamBScore(),
                 teamAList,
@@ -219,6 +249,24 @@ public class BelotGameService {
                 tieBrk,
                 seatingOrder
         );
+    }
+
+    private static Trick getTrickForDisplay(BelotGame g) {
+        Trick trickForDisplay = g.getCurrentTrick();
+
+        /* --- NEW null-safe guard -------------------------------------------- */
+        if (trickForDisplay == null ||
+                (trickForDisplay.getPlays().isEmpty() && !g.getCompletedTricks().isEmpty())) {
+
+            if (!g.getCompletedTricks().isEmpty()) {
+                trickForDisplay = g.getCompletedTricks()
+                        .getLast();
+            } else {
+                // brand-new game: create an empty Trick so the field is never null
+                trickForDisplay = Trick.empty();   // ← Trick has a no-arg ctor
+            }
+        }
+        return trickForDisplay;
     }
 
     public PrivateGameView toPrivateView(BelotGame g, Player p) {

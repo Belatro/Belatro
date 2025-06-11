@@ -693,40 +693,19 @@ public class BelotGame {
 
 
     /**
-     * @param player The player playing the card
-     * @param card The card being played
-     * @return true if the play is valid, false otherwise
+     * @param player The player trying to play the card
+     * @param card   The card the player wants to play
+     * @return true  if the card is legal under Belot rules
+     *         false otherwise
      */
     public boolean isValidPlay(Player player, Card card) {
-        if (currentTrick.getPlays().isEmpty()) {
-            return true;
+        // 1) only the active player may act
+        if (!player.equals(getCurrentPlayer())) {
+            return false;
         }
 
-        Card leadCard = currentTrick.getLeadCard();
-        Boja leadSuit = leadCard.getBoja();
-
-        if (card.getBoja() == leadSuit) {
-            return true;
-        }
-
-        boolean hasLeadSuit = player.getHand().stream()
-                .anyMatch(c -> c.getBoja() == leadSuit);
-
-        if (!hasLeadSuit) {
-            boolean trumpInTrick = currentTrick.getPlays().values().stream()
-                    .anyMatch(c -> c.getBoja() == trump);
-
-            if (trumpInTrick && card.getBoja() != trump) {
-                boolean hasTrump = player.getHand().stream()
-                        .anyMatch(c -> c.getBoja() == trump);
-
-                return !hasTrump;
-            }
-
-            return true;
-        }
-
-        return false;
+        // 2) let the existing rules engine decide
+        return getLegalMoves().contains(card);
     }
 
     /**

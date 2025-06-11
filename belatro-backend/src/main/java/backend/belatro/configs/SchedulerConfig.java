@@ -10,7 +10,7 @@ public class SchedulerConfig {
     @Bean
     public TaskScheduler taskScheduler() {
         ThreadPoolTaskScheduler ts = new ThreadPoolTaskScheduler();
-        ts.setPoolSize(4);
+        ts.setPoolSize(32);
         ts.setThreadNamePrefix("turnTimer-");
         ts.initialize();
         return ts;
