@@ -40,7 +40,7 @@ public class MatchmakingService {
     // Tunables
     private static final int      INITIAL_DIFF = 100;
     private static final int      EXPAND_STEP  = 100;
-    private static final Duration EXPAND_EVERY = Duration.ofSeconds(30);
+    private static final Duration EXPAND_EVERY = Duration.ofSeconds(10);
 
     /* ─────────────────────────────────────────────────────────────── */
     /* PUBLIC API                                                     */
