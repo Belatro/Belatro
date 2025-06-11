@@ -1,6 +1,7 @@
 package backend.belatro.services.impl;
 
 import backend.belatro.dtos.*;
+import backend.belatro.enums.GameMode;
 import backend.belatro.enums.MoveType;
 import backend.belatro.exceptions.NotFoundException;
 import backend.belatro.models.Lobbies;
@@ -10,6 +11,7 @@ import backend.belatro.models.User;
 import backend.belatro.repos.MatchMoveRepo;
 import backend.belatro.repos.MatchRepo;
 import backend.belatro.services.IMatchService;
+import backend.belatro.services.RankHistoryService;
 import backend.belatro.util.MappingUtils;
 import backend.belatro.util.MatchUtils;
 import org.springframework.beans.BeanUtils;
@@ -30,15 +32,17 @@ public class MatchServiceImpl implements IMatchService {
 
     private final MatchRepo matchRepo;
     private final MatchMoveRepo matchMoveRepo;
+    private final RankHistoryService rankHistoryService;
     private static final int PLAYS_PER_HAND  = 32;
     private static final int PLAYS_PER_TRICK = 4;
     private static final AtomicLong GLOBAL_MOVE_SEQUENCE = new AtomicLong();
 
 
     @Autowired
-    public MatchServiceImpl(MatchRepo matchRepo, MatchMoveRepo matchMoveRepo) {
+    public MatchServiceImpl(MatchRepo matchRepo, MatchMoveRepo matchMoveRepo, RankHistoryService rankHistoryService) {
         this.matchRepo = matchRepo;
         this.matchMoveRepo = matchMoveRepo;
+        this.rankHistoryService = rankHistoryService;
     }
 
     @Override
@@ -268,13 +272,17 @@ public class MatchServiceImpl implements IMatchService {
     @Transactional
     @Override
     public void finaliseMatch(String matchId,
-                              String winnerString,   // “Team A wins 1001–777”
+                              String winnerString,
                               Instant endTs) {
 
         matchRepo.findById(matchId).ifPresent(match -> {
             match.setResult(winnerString);
             match.setEndTime(Date.from(endTs));
-            matchRepo.save(match);          // one write, in-transaction
+            matchRepo.save(match);                           // already there
+
+            if (match.getGameMode() == GameMode.RANKED) {
+                rankHistoryService.updateRatingsForMatch(match);
+            }
         });
     }
 
