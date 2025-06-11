@@ -82,7 +82,14 @@ public class BelotGameService {
                               boolean declareBela) {
 
         BelotGame game = getOrThrow(gameId);
-        Player p = game.findPlayerById(playerId);   // helper already in your POJO
+        Player p = game.findPlayerById(playerId);
+        boolean isTurn = (game.getGameState() == GameState.BIDDING && p.getId().equals(game.getCurrentLead().getId()))
+                || (game.getGameState() == GameState.PLAYING && game.getCurrentPlayer() != null
+                && p.getId().equals(game.getCurrentPlayer().getId()));
+        if (!isTurn) {
+            LOGGER.warn("Rejected out-of-turn play by {}", playerId);
+            return game; // or throw an exception to inform the client
+        }
 
         game.playCard(p, card, declareBela);
         save(game);
@@ -96,6 +103,13 @@ public class BelotGameService {
     @GameAction
     public BelotGame placeBid(String gameId, Bid bid) {
         BelotGame game = getOrThrow(gameId);
+        Player p = game.findPlayerById(bid.getPlayer().getId());
+        boolean isTurn = game.getGameState() == GameState.BIDDING &&
+                p.getId().equals(game.getCurrentLead().getId());
+        if (!isTurn) {
+            LOGGER.warn("Rejected out-of-turn bid by {}", p.getId());
+            return game;
+        }
         game.placeBid(bid);
         save(game);
         if (game.getGameState() == GameState.BIDDING) {
@@ -218,14 +232,14 @@ public class BelotGameService {
                     );
                 })
                 .toList();
-
+        Trick trickForDisplay = getTrickForDisplay(g);
 
 
         return new PublicGameView(
                 g.getGameId(),
                 g.getGameState(),
                 safe,
-                g.getCurrentTrick(),
+                trickForDisplay,
                 g.getTeamAScore(),
                 g.getTeamBScore(),
                 teamAList,
@@ -235,6 +249,24 @@ public class BelotGameService {
                 tieBrk,
                 seatingOrder
         );
+    }
+
+    private static Trick getTrickForDisplay(BelotGame g) {
+        Trick trickForDisplay = g.getCurrentTrick();
+
+        /* --- NEW null-safe guard -------------------------------------------- */
+        if (trickForDisplay == null ||
+                (trickForDisplay.getPlays().isEmpty() && !g.getCompletedTricks().isEmpty())) {
+
+            if (!g.getCompletedTricks().isEmpty()) {
+                trickForDisplay = g.getCompletedTricks()
+                        .getLast();
+            } else {
+                // brand-new game: create an empty Trick so the field is never null
+                trickForDisplay = Trick.empty();   // ← Trick has a no-arg ctor
+            }
+        }
+        return trickForDisplay;
     }
 
     public PrivateGameView toPrivateView(BelotGame g, Player p) {

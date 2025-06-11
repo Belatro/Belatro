@@ -14,6 +14,7 @@ import java.util.*;
  * A trick consists of one card played by each player, with the first card played by the lead player.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
+
 public class Trick {
     @Getter
     private final String leadPlayerId;
@@ -22,6 +23,7 @@ public class Trick {
     private final Boja trump;
 
     private final Map<String, Card> plays;
+    private static final String PLACEHOLDER_LEAD = "_NO_LEAD_";
 
 
     @JsonCreator
@@ -31,6 +33,7 @@ public class Trick {
         this.trump        = trump;
         this.plays        = new HashMap<>();
     }
+    public static Trick empty() { return new Trick(PLACEHOLDER_LEAD,null); }
 
     /**
      * Adds a card played by a player to this trick.
