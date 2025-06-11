@@ -15,7 +15,8 @@ public class CorsConfig implements WebMvcConfigurer {
                         "http://localhost:3000", //create-react-app
                         "http://localhost:5173", // Vite React
                         "http://localhost:19006",
-                        "http://localhost:63342"// common port for React Native with Expo
+                        "http://localhost:63342",// common port for React Native with Expo
+                        "http://localhost:9000" //MinIO
                 )
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
