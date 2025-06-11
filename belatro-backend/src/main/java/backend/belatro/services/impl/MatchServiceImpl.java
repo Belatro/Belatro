@@ -410,7 +410,8 @@ public class MatchServiceImpl implements IMatchService {
                         m.getId(),
                         m.getEndTime().toInstant(),
                         m.getResult(),
-                        won ? "WIN" : "LOSS"
+                        won ? "WIN" : "LOSS",
+                        m.getGameMode()
                 ));
             }
             if (!page.hasNext()) break;
