@@ -4,6 +4,7 @@ import backend.belatro.dtos.JoinLobbyRequestDTO;
 import backend.belatro.dtos.LobbyDTO;
 import backend.belatro.dtos.MatchDTO;
 import backend.belatro.dtos.TeamSwitchRequestDTO;
+import backend.belatro.models.User;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,4 +27,5 @@ public interface LobbyService {
     List<LobbyDTO> getAllLobbies();
     List<LobbyDTO> getAllOpenLobbies();
 
+    LobbyDTO createRankedLobby(List<User> teamA, List<User> teamB);
 }

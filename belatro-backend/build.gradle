@@ -55,16 +55,19 @@ dependencies {
 	testImplementation "com.redis:testcontainers-redis:2.2.4"
 	testImplementation 'org.springframework.boot:spring-boot-starter-websocket'
 	implementation "io.jsonwebtoken:jjwt-api:0.11.5"
-	runtimeOnly    "io.jsonwebtoken:jjwt-impl:0.11.5"
-	runtimeOnly    "io.jsonwebtoken:jjwt-jackson:0.11.5"
+	runtimeOnly "io.jsonwebtoken:jjwt-impl:0.11.5"
+	runtimeOnly "io.jsonwebtoken:jjwt-jackson:0.11.5"
 	implementation 'org.springframework.boot:spring-boot-starter-aop:3.5.0'
 
 	testImplementation 'org.mockito:mockito-core:5.18.0'
 
 	implementation 'software.amazon.awssdk:s3:2.20.12'
 
-}
+	testImplementation("org.testcontainers:mongodb")
+	implementation("org.springframework.security:spring-security-messaging")
+	testImplementation("org.springframework.security:spring-security-messaging")
 
-tasks.named('test') {
-	useJUnitPlatform()
+	tasks.named('test') {
+		useJUnitPlatform()
+	}
 }

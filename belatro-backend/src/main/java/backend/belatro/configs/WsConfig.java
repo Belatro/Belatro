@@ -50,78 +50,61 @@ public class WsConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // grab the StompWebSocketEndpointRegistration
-        var reg = registry
-                .addEndpoint("/ws")
-                .setAllowedOriginPatterns("*")
-                .addInterceptors(rateLimitingHandshakeInterceptor);
-        registry
-                .addEndpoint("/ws-native")
-                .setAllowedOriginPatterns("*")
-                .addInterceptors(rateLimitingHandshakeInterceptor)
-                .setHandshakeHandler(new DefaultHandshakeHandler());
 
-        // 1) for SockJS transport, intercept the HTTP handshake
-        reg.addInterceptors(new HandshakeInterceptor() {
+
+        HandshakeInterceptor authInterceptor = new HandshakeInterceptor() {
             @Override
-            public boolean beforeHandshake(ServerHttpRequest request,
-                                           ServerHttpResponse response,
-                                           WebSocketHandler wsHandler,
-                                           Map<String,Object> attributes) {
+            public boolean beforeHandshake(ServerHttpRequest req,
+                                           ServerHttpResponse resp,
+                                           WebSocketHandler handler,
+                                           Map<String, Object> attrs) {
 
-                // keep current query-param code
-                String qp = Optional.ofNullable(request.getURI().getQuery()).orElse("");
+                String qp = Optional.ofNullable(req.getURI().getQuery()).orElse("");
                 String user = Arrays.stream(qp.split("&"))
                         .map(s -> s.split("="))
                         .filter(p -> p.length == 2 && p[0].equals("user"))
                         .map(p -> p[1])
                         .findFirst()
-                        // NEW: if ?user not present, fall back to header
-                        .orElseGet(() ->
-                                request.getHeaders()
-                                        .getFirst("X-Player-Name"));
+                        .orElseGet(() -> req.getHeaders().getFirst("X-Player-Name"));
 
-                String authHeader = request.getHeaders().getFirst("Authorization");
-                if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                    String jwt = authHeader.substring(7);
-                    if (jwtTokenProvider.validateToken(jwt)) {
-                        user = jwtTokenProvider.getUsername(jwt); // overwrite/confirm user
-                        Authentication auth =
-                                new UsernamePasswordAuthenticationToken(user, null, List.of());
-                        attributes.put("SPRING.AUTHENTICATION", auth);
-                    } else {
-                        return false; // invalid token → refuse handshake
-                    }
+                String raw = req.getHeaders().getFirst("Authorization");
+                if (raw != null && raw.startsWith("Bearer ")) {
+                    String jwt = raw.substring(7);
+                    if (!jwtTokenProvider.validateToken(jwt)) return false;
+                    user = jwtTokenProvider.getUsername(jwt);
+                    Authentication auth =
+                            new UsernamePasswordAuthenticationToken(user, null, List.of());
+                    attrs.put("SPRING.AUTHENTICATION", auth);
                 }
-
-
-                if (user == null || user.isBlank()) {
-                    return false;          // refuse handshake – no identity
-                }
-                attributes.put("user", user);
+                if (user == null || user.isBlank()) return false;
+                attrs.put("user", user);
                 return true;
             }
-            @Override public void afterHandshake(ServerHttpRequest req,
-                                                 ServerHttpResponse resp,
-                                                 WebSocketHandler handler,
-                                                 Exception ex) { }
-        });
+            @Override public void afterHandshake(ServerHttpRequest r, ServerHttpResponse s,
+                                                 WebSocketHandler h, Exception ex) { }
+        };
 
-        reg.setHandshakeHandler(new DefaultHandshakeHandler() {
+        DefaultHandshakeHandler principalHandler = new DefaultHandshakeHandler() {
             @Override
-            protected Principal determineUser(ServerHttpRequest request,
+            protected Principal determineUser(ServerHttpRequest req,
                                               WebSocketHandler wsHandler,
-                                              Map<String, Object> attributes) {
-
-                Object maybeAuth = attributes.get("SPRING.AUTHENTICATION");
-                if (maybeAuth instanceof Authentication auth) {
-                    return auth;
-                }
-                return () -> (String) attributes.get("user");
+                                              Map<String, Object> attrs) {
+                Object maybe = attrs.get("SPRING.AUTHENTICATION");
+                if (maybe instanceof Authentication a) return a;
+                return () -> (String) attrs.get("user");
             }
-        });
+        };
+        registry.addEndpoint("/ws")
+                .setAllowedOriginPatterns("*")
+                .addInterceptors(rateLimitingHandshakeInterceptor, authInterceptor)
+                .setHandshakeHandler(principalHandler)
+                .withSockJS()
+                .setDisconnectDelay(30_000L);
 
-
-        reg.withSockJS().setDisconnectDelay(30_000L);
+        registry.addEndpoint("/ws-native")
+                .setAllowedOriginPatterns("*")
+                .addInterceptors(rateLimitingHandshakeInterceptor, authInterceptor)
+                .setHandshakeHandler(principalHandler);
 
     }
     @Override

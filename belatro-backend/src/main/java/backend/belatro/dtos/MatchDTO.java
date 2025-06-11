@@ -23,4 +23,6 @@ public class MatchDTO {
         var r = MatchUtils.parseWinner(result);
         return r != null ? r : "Draw";
     }
+
+
 }

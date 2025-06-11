@@ -1,11 +1,11 @@
 package backend.belatro.dtos;
 
-import lombok.Data;
+public record UserRatingDto(
+        String userId,
+        int oldRating,
+        int newRating,
+        int gamesPlayed
+        ) {
 
-@Data
-public class UserRatingDto {
-    private String userId;
-    private int oldRating;
-    private int newRating;
-    private int gamesPlayed;
+
 }

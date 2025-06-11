@@ -294,6 +294,45 @@ public class LobbyServiceImpl implements LobbyService {
 
         return persistedMatch;
     }
+    @Override
+    public LobbyDTO createRankedLobby(List<User> teamA, List<User> teamB) {
+
+        User host = teamA.getFirst();                       // A[0] is host
+
+        LobbyDTO dto = new LobbyDTO();
+        dto.setGameMode("RANKED");
+        dto.setPrivateLobby(false);
+        dto.setHostUser(convertUserToUserSimple(host));
+
+        LobbyDTO lobby = createLobby(dto);                  // host now in Team A
+
+        joinLobbyInternal(lobby.getId(), teamA.get(1), "A");
+        // 3) add the two B-players
+        joinLobbyInternal(lobby.getId(), teamB.get(0), "B");
+        joinLobbyInternal(lobby.getId(), teamB.get(1), "B");
+
+        return getLobby(lobby.getId());        // fresh DTO, 2/2/0
+    }
+
+    /** Same logic as public joinLobby but no password, no REST, no DTO */
+    private void joinLobbyInternal(String lobbyId, User player, String targetTeam) {
+        Lobbies lobby = lobbyRepo.findById(lobbyId)
+                .orElseThrow(() -> new RuntimeException("Lobby not found"));
+
+        switch (targetTeam) {
+            case "A" -> lobby.getTeamAPlayers().add(player);
+            case "B" -> lobby.getTeamBPlayers().add(player);
+            default   -> throw new IllegalArgumentException("team must be A or B");
+        }
+        lobbyRepo.save(lobby);
+    }
+
+
+    private List<LobbyDTO.UserSimpleDTO> toSimple(List<User> users) {
+        return users.stream()
+                .map(this::convertUserToUserSimple)
+                .collect(Collectors.toList());
+    }
 
 
     private LobbyDTO.UserSimpleDTO convertUserToUserSimple(User user) {
