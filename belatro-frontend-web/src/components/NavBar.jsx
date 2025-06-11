@@ -6,7 +6,7 @@ import NotificationsIcon from "@mui/icons-material/Notifications";
 import {
   fetchAllFriendsByUserId,
   acceptFriendRequest,
-  rejectFriendRequest
+  rejectFriendRequest, deleteRequest
 } from "../services/userService";
 
 const NavBar = ({ username, setUsername }) => {
@@ -65,6 +65,18 @@ useEffect(() => {
     setUsername(null);
     setDropdownOpen(false);
     navigate("/login");
+  };
+  const handleRequestForget = async () => {
+    if (!window.confirm('⚠️ This will flag your account for deletion. Continue?')) return;
+
+    try {
+          await deleteRequest(userId);
+          alert('✅ Your deletion request has been sent.');
+          setDropdownOpen(false);
+        } catch(err) {
+          console.error(err);
+          alert('❌ Failed to send deletion request.');
+        }
   };
 
   const toggleDropdown = () => {
@@ -136,6 +148,11 @@ useEffect(() => {
                 <Link to="/profile" className="dropdown-item" onClick={() => setDropdownOpen(false)}>
                   PROFILE
                 </Link>
+                   <button
+                    className="dropdown-item" onClick={handleRequestForget}
+                   >
+                     REQUEST FORGET
+                   </button>
                 <button className="dropdown-item" onClick={handleLogout}>
                   SIGN OUT
                 </button>
