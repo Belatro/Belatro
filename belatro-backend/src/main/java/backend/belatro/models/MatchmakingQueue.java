@@ -1,6 +1,6 @@
 package backend.belatro.models;
 
-import backend.belatro.enums.queueStatus;
+import backend.belatro.enums.QueueState;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.DBRef;
@@ -22,5 +22,5 @@ public class MatchmakingQueue {
 
     private Date queuedAt;
 
-    private queueStatus status;
+    private QueueState status;
 }

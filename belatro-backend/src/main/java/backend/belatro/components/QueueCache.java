@@ -44,4 +44,8 @@ public class QueueCache {
                 .forEach(set::add);
         log.info("QueueCache warmed: {} entries", set.size());
     }
+
+    public int size() {                        // ← NEW
+        return set.size();
+    }
 }

@@ -3,6 +3,8 @@ package backend.belatro.services;
 import backend.belatro.components.QueueCache;
 import backend.belatro.dtos.LobbyDTO;
 import backend.belatro.dtos.MatchDTO;
+import backend.belatro.dtos.QueueStatusDTO;
+import backend.belatro.enums.QueueState;
 import backend.belatro.models.MatchmakingQueueEntry;
 import backend.belatro.models.User;
 import backend.belatro.repos.MatchmakingQueueRepo;
@@ -31,20 +33,21 @@ public class MatchmakingService {
     private final MatchmakingQueueRepo queueRepo;
     private final LobbyService         lobbyService;
     private final SimpMessagingTemplate broker;
-    private final QueueCache cache;
-    private final ReentrantLock lock = new ReentrantLock(true);
-    private final UserRepo userRepo;
+    private final QueueCache           cache;
+    private final ReentrantLock        lock = new ReentrantLock(true);
+    private final UserRepo             userRepo;
 
-    /** Tunables; move to application.yml if you like */
-    private static final int   INITIAL_DIFF   = 100;
-    private static final int   EXPAND_STEP    = 100;
+    // Tunables
+    private static final int      INITIAL_DIFF = 100;
+    private static final int      EXPAND_STEP  = 100;
     private static final Duration EXPAND_EVERY = Duration.ofSeconds(30);
 
-    /* ---------- Public API ---------- */
+    /* ─────────────────────────────────────────────────────────────── */
+    /* PUBLIC API                                                     */
+    /* ─────────────────────────────────────────────────────────────── */
 
     @Transactional
     public void joinQueue(User user) {
-        // guard against duplicates
         queueRepo.findByUserIdAndStatus(user.getId(), QUEUED)
                 .ifPresent(e -> { throw new IllegalStateException("Already queued"); });
 
@@ -57,7 +60,11 @@ public class MatchmakingService {
 
         queueRepo.save(entry);
         cache.add(entry);
-        dispatch();     // try match right away
+
+        // ★ new – initial status push
+        pushStatus(user, QueueState.IN_QUEUE, estimateWaitSeconds(user), cache.size(), null);
+
+        dispatch();   // try to form match instantly
     }
 
     @Transactional
@@ -66,40 +73,61 @@ public class MatchmakingService {
             e.setStatus(CANCELLED);
             queueRepo.save(e);
             cache.remove(e);
+
+            // ★ new – cancelled frame
+            pushStatus(user, QueueState.CANCELLED, 0, cache.size(), null);
         });
     }
 
-    /* ---------- Scheduled dispatcher ---------- */
+    /* ─────────────────────────────────────────────────────────────── */
+    /* SCHEDULED TICK                                                 */
+    /* ─────────────────────────────────────────────────────────────── */
 
-    /** Safety net: every 2 s we try matching (covers race conditions). */
+    /** Fires every 2 s – tries to build matches *and* updates ETAs. */
     @Scheduled(fixedDelay = 2000)
-    public void scheduledDispatch() { dispatch(); }
+    public void scheduledDispatch() {
+        // ★ new – broadcast IN_QUEUE frames to everyone still waiting
+        cache.snapshot().forEach(e -> {
+            User u = user(e);
+            pushStatus(u,
+                    QueueState.IN_QUEUE,
+                    estimateWaitSeconds(u),
+                    cache.size(),
+                    null);
+        });
 
-    /** Core matching algorithm (single-threaded via lock). */
+        dispatch();   // existing matching logic
+    }
+
+    /* ─────────────────────────────────────────────────────────────── */
+    /* MATCHING CORE                                                  */
+    /* ─────────────────────────────────────────────────────────────── */
+
     private void dispatch() {
-        if (!lock.tryLock()) return;     // another thread is matching
+        if (!lock.tryLock()) return;
         try {
             while (true) {
                 List<MatchmakingQueueEntry> pool = cache.snapshot();
                 if (pool.size() < 4) return;
 
-                // oldest wait → controls expansion
                 Instant oldest = pool.get(0).getQueuedAt();
-                long waitedMs  = Duration.between(oldest, Instant.now()).toMillis();
-                int allowed    = INITIAL_DIFF + (int)((waitedMs / EXPAND_EVERY.toMillis()) * EXPAND_STEP);
+                long    waited = Duration.between(oldest, Instant.now()).toMillis();
+                int     allowed = INITIAL_DIFF +
+                        (int) ((waited / EXPAND_EVERY.toMillis()) * EXPAND_STEP);
 
-                int bestStart  = -1, bestSpread = Integer.MAX_VALUE;
+                int bestStart = -1, bestSpread = Integer.MAX_VALUE;
                 for (int i = 0; i <= pool.size() - 4; i++) {
-                    int spread = pool.get(i+3).getEloSnapshot() - pool.get(i).getEloSnapshot();
+                    int spread = pool.get(i + 3).getEloSnapshot() - pool.get(i).getEloSnapshot();
                     if (spread <= allowed && spread < bestSpread) {
-                        bestSpread = spread; bestStart = i;
+                        bestSpread = spread;
+                        bestStart  = i;
                     }
                 }
-                if (bestStart == -1) return;  // nothing within threshold yet
+                if (bestStart == -1) return;  // nothing close enough yet
 
                 var four = pool.subList(bestStart, bestStart + 4);
-                // sort inside the group
                 four.sort(Comparator.comparingInt(MatchmakingQueueEntry::getEloSnapshot));
+
                 User high  = user(four.get(3));
                 User midHi = user(four.get(2));
                 User midLo = user(four.get(1));
@@ -108,32 +136,23 @@ public class MatchmakingService {
                 List<User> teamA = List.of(high, low);
                 List<User> teamB = List.of(midHi, midLo);
 
-                log.debug("Team A chosen  : {}", teamA.stream()
-                        .map(User::getUsername)
-                        .toList());
-                log.debug("Team B chosen  : {}", teamB.stream()
-                        .map(User::getUsername)
-                        .toList());
-                // make lobby & match
-                LobbyDTO lobby = lobbyService.createRankedLobby(teamA, teamB);
-                MatchDTO match = lobbyService.startMatch(lobby.getId());
-
-                log.debug("After createLobby → teamA.size={} teamB.size={} unassigned={}",
-                        lobby.getTeamAPlayers().size(),
-                        lobby.getTeamBPlayers().size(),
-                        lobby.getUnassignedPlayers().size());
+                LobbyDTO lobby  = lobbyService.createRankedLobby(teamA, teamB);
+                MatchDTO match  = lobbyService.startMatch(lobby.getId());
 
                 four.forEach(e -> {
                     e.setStatus(MATCHED);
                     queueRepo.save(e);
                     cache.remove(e);
                 });
-                Stream.concat(teamA.stream(), teamB.stream())
-                        .forEach(user ->
-                                broker.convertAndSendToUser(
-                                        user.getUsername(),           // principal name in the WS session
-                                        "/queue/match-found",
-                                        match));
+
+                // ★ new – push MATCH_FOUND + legacy /match-found frame
+                Stream.concat(teamA.stream(), teamB.stream()).forEach(u -> {
+                    pushStatus(u, QueueState.MATCH_FOUND, 0, cache.size(), match.getId());
+                    broker.convertAndSendToUser(
+                            u.getUsername(),
+                            "/queue/match-found",
+                            match);
+                });
 
                 log.info("Ranked match formed: {} vs {} (matchId={})",
                         teamA.stream().map(User::getUsername).toList(),
@@ -143,8 +162,55 @@ public class MatchmakingService {
         } finally { lock.unlock(); }
     }
 
-    /* convenience to fetch User by ID (cache / DB as you like) */
+    /* ─────────────────────────────────────────────────────────────── */
+    /* SUPPORT                                                        */
+    /* ─────────────────────────────────────────────────────────────── */
+
+    private void pushStatus(User u,
+                            QueueState state,
+                            int etaSeconds,
+                            int queueSize,
+                            String matchId) {
+
+        QueueStatusDTO dto = new QueueStatusDTO(
+                state,
+                etaSeconds,
+                queueSize,
+                u.getEloRating(),
+                matchId);
+
+        broker.convertAndSendToUser(
+                u.getUsername(),
+                "/queue/ranked/status",
+                dto);
+    }
+
+    /** Very light ETA estimate: how many 30 s expansions until a match is *likely*. */
+    private int estimateWaitSeconds(User u) {
+        List<MatchmakingQueueEntry> pool = cache.snapshot();
+        if (pool.size() < 4) return -1;
+
+        // assume player will pair with three closest mmr neighbours
+        pool.sort(Comparator.comparingInt(MatchmakingQueueEntry::getEloSnapshot));
+        int idx = -1;
+        for (int i = 0; i < pool.size(); i++)
+            if (pool.get(i).getUserId().equals(u.getId())) { idx = i; break; }
+        if (idx == -1) return -1;
+
+        int left = Math.max(idx - 3, 0);
+        int right = Math.min(left + 3, pool.size() - 1);
+        int spread = pool.get(right).getEloSnapshot() - pool.get(left).getEloSnapshot();
+
+        // time until allowedDiff >= spread
+        int diffNeeded = spread - INITIAL_DIFF;
+        if (diffNeeded <= 0) return 5;   // should pop next tick
+
+        int expansions = (int) Math.ceil(diffNeeded / (double) EXPAND_STEP);
+        return expansions * (int) EXPAND_EVERY.getSeconds();
+    }
+
     private User user(MatchmakingQueueEntry e) {
         return userRepo.findById(e.getUserId()).orElseThrow();
     }
 }
+
