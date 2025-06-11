@@ -130,3 +130,15 @@ export const deleteFriendship = async (friendshipId) => {
   }
 };
 
+// GET match history za usera po idu
+export const fetchMatchHistorySummary = async (userId, page = 0, size = 20) => {
+  try {
+    const response = await axios.get(
+      `${API_BASE_URL}/user/${userId}/history/summary?page=${page}&size=${size}`
+    );
+    console.log("Match history response:", response.data);
+    return response.data.content;
+  } catch (error) {
+    throw error.response?.data || error.message;
+  }
+};

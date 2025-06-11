@@ -4,29 +4,39 @@ import UserProfileCard from "../components/UserProfileCard";
 import RankInfo from "../components/RankInfo";
 import FriendsList from "../components/FriendsList";
 import MatchHistoryTable from "../components/MatchHistoryTable";
-import { fetchUserById } from "../services/userService";
+import { fetchUserById, fetchMatchHistorySummary } from "../services/userService";
 import "../App.css";
 
-const ProfilePage = () => {
+const ProfilePage = ({ user: initialUser }) => {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(initialUser || null);
+  const [matchHistory, setMatchHistory] = useState([]);
 
   useEffect(() => {
-    const savedUserId = localStorage.getItem("userId");
+    const userId = initialUser?.userId || localStorage.getItem("userId");
 
-    if (savedUserId) {
-      fetchUserById(savedUserId)
-        .then((fullUser) => {
-          setUser(fullUser);
-        })
+    if (!userId) {
+      navigate("/login");
+      return;
+    }
+
+    if (!initialUser) {
+      fetchUserById(userId)
+        .then(setUser)
         .catch((err) => {
           console.error("Failed to fetch user:", err);
           navigate("/login");
         });
-    } else {
-      navigate("/login");
     }
-  }, [navigate]);
+
+    fetchMatchHistorySummary(userId)
+      .then((history) => setMatchHistory(history))
+      .catch((err) => {
+        console.error("Failed to fetch match history:", err);
+        setMatchHistory([]);
+      });
+  }, [navigate, initialUser]);
+
 
   if (!user) return <div>Loading...</div>;
 
@@ -43,125 +53,22 @@ const ProfilePage = () => {
   };
 
   return (
-    <>
-      <div className="profile-page">
-        <div className="left-panel">
-          <UserProfileCard
-            username={username}
-            description={description}
-            avatar={avatar}
-            user={user}
-            onUpdate={handleUserUpdate}
-          />
-          <RankInfo rank={rank} elo={elo} />
-          <FriendsList />
-        </div>
-        <div className="right-panel">
-          <MatchHistoryTable
-            matches={[
-              {
-                player: username,
-                score: "1 - 0",
-                opponent: "Meawen",
-                eloChange: "+28",
-                date: "2025-04-12",
-              },
-              {
-                player: username,
-                score: "4 - 6",
-                opponent: "MaksM",
-                eloChange: "-15",
-                date: "2025-04-10",
-              },
-              {
-                player: username,
-                score: "2 - 1",
-                opponent: "Tesla",
-                eloChange: "+30",
-                date: "2025-04-09",
-              },
-              {
-                player: username,
-                score: "2 - 1",
-                opponent: "Tesla",
-                eloChange: "+30",
-                date: "2025-04-09",
-              },
-              {
-                player: username,
-                score: "2 - 1",
-                opponent: "Tesla",
-                eloChange: "+30",
-                date: "2025-04-09",
-              },
-              {
-                player: username,
-                score: "2 - 1",
-                opponent: "Tesla",
-                eloChange: "+30",
-                date: "2025-04-09",
-              },
-              {
-                player: username,
-                score: "2 - 1",
-                opponent: "Tesla",
-                eloChange: "+30",
-                date: "2025-04-09",
-              },
-              {
-                player: username,
-                score: "2 - 1",
-                opponent: "Tesla",
-                eloChange: "+30",
-                date: "2025-04-09",
-              },
-              {
-                player: username,
-                score: "2 - 1",
-                opponent: "Tesla",
-                eloChange: "+30",
-                date: "2025-04-09",
-              },
-              {
-                player: username,
-                score: "2 - 1",
-                opponent: "Tesla",
-                eloChange: "+30",
-                date: "2025-04-09",
-              },
-              {
-                player: username,
-                score: "2 - 1",
-                opponent: "Tesla",
-                eloChange: "+30",
-                date: "2025-04-09",
-              },
-              {
-                player: username,
-                score: "2 - 1",
-                opponent: "Tesla",
-                eloChange: "+30",
-                date: "2025-04-09",
-              },
-              {
-                player: username,
-                score: "2 - 1",
-                opponent: "Tesla",
-                eloChange: "+30",
-                date: "2025-04-09",
-              },
-              {
-                player: username,
-                score: "2 - 1",
-                opponent: "Tesla",
-                eloChange: "+30",
-                date: "2025-04-09",
-              },
-            ]}
-          />
-        </div>
+    <div className="profile-page">
+      <div className="left-panel">
+        <UserProfileCard
+          username={username}
+          description={description}
+          avatar={avatar}
+          user={user}
+          onUpdate={handleUserUpdate}
+        />
+        <RankInfo rank={rank} elo={elo} />
+        <FriendsList />
       </div>
-    </>
+      <div className="right-panel">
+        <MatchHistoryTable matches={matchHistory} />
+      </div>
+    </div>
   );
 };
 

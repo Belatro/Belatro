@@ -65,3 +65,9 @@ export const refreshMatch = async (matchId, jwtToken) => {
   );
   return response.data;
 };
+
+// GET match by lobby ID
+export const getMatchByLobbyId = async (lobbyId) => {
+  const response = await axios.get(`${API_BASE_URL}/getmatchbylobbyid/${lobbyId}`);
+  return response.data;
+};

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { loginUser } from "../services/userService"; // only this needed now
+import { loginUser } from "../services/userService";
 import "../App.css";
 
 const LoginPage = ({ setUsername }) => {
@@ -19,7 +19,6 @@ const LoginPage = ({ setUsername }) => {
         password: password,
       });
 
-      // Save token and user info
       localStorage.setItem("token", result.token);
       localStorage.setItem("userId", result.user.id);
       localStorage.setItem("username", result.user.username);
@@ -30,7 +29,7 @@ const LoginPage = ({ setUsername }) => {
       });
 
       setLoginError("");
-      navigate("/"); // redirect to homepage
+      navigate("/");
     } catch (err) {
       setLoginError(err);
     }

@@ -5,8 +5,10 @@ import {
   deleteLobby,
   joinLobby,
   switchTeam,
-  startMatch
+  startMatch,
+  leaveLobby,
 } from "../services/lobbyService";
+import { getMatchByLobbyId } from "../services/matchService";
 import "../App.css";
 
 const LobbyPage = () => {
@@ -16,6 +18,7 @@ const LobbyPage = () => {
   const [lobby, setLobby] = useState(null);
   const userId = localStorage.getItem("userId");
   const username = localStorage.getItem("username");
+  const [matchStarted, setMatchStarted] = useState(false);
 
   useEffect(() => {
     let intervalId;
@@ -26,9 +29,9 @@ const LobbyPage = () => {
         setLobby(data);
 
         const isInLobby =
-          data.teamAPlayers?.some(p => p?.id === userId) ||
-          data.teamBPlayers?.some(p => p?.id === userId) ||
-          data.unassignedPlayers?.some(p => p?.id === userId);
+          data.teamAPlayers?.some((p) => p?.id === userId) ||
+          data.teamBPlayers?.some((p) => p?.id === userId) ||
+          data.unassignedPlayers?.some((p) => p?.id === userId);
 
         const isHost = data.hostUser?.id === userId;
 
@@ -43,11 +46,26 @@ const LobbyPage = () => {
           });
         }
 
-        if (data.status === "CLOSED" && data.matchId) {
-          navigate("/match", { state: { matchId: data.matchId } });
+        if (data.status === "CLOSED" && !matchStarted) {
+          try {
+            const match = await getMatchByLobbyId(lobbyId);
+            if (match?.id) {
+              setMatchStarted(true);
+              navigate("/match", { state: { matchId: match.id } });
+            } else {
+              console.warn("Match is closed but no match found for lobby:", lobbyId);
+            }
+          } catch (err) {
+            console.error("Failed to fetch match by lobby ID:", err);
+          }
         }
       } catch (error) {
-        console.error("Failed to fetch or join lobby:", error);
+        if (error.response?.status === 404) { //neradi jer daje 403 forbiden, a ne 404 kad je deletan lobby, a to je isti kod kad je team full i to ostalo
+          alert("Host left the lobby.");
+          navigate("/");
+        } else {
+          console.error("Failed to fetch or join lobby:", error);
+        }
       }
     };
 
@@ -57,7 +75,7 @@ const LobbyPage = () => {
     }
 
     return () => clearInterval(intervalId);
-  }, [lobbyId]);
+  }, [lobbyId, userId, matchStarted, navigate]);
 
   const handleLeaveLobby = async () => {
     if (!lobby || !userId) return;
@@ -69,14 +87,11 @@ const LobbyPage = () => {
         await deleteLobby(lobby.id);
       } else {
         const leaveRequest = {
-          lobbyId,
-          userId,
-          password:
-            lobby.password ||
-            localStorage.getItem(`lobbyPassword_${lobbyId}`) ||
-            "",
+          id: userId,
+          username: username
         };
-        await joinLobby(leaveRequest);
+
+        await leaveLobby(lobby.id, leaveRequest);
       }
 
       navigate("/");
@@ -112,28 +127,24 @@ const LobbyPage = () => {
 
     try {
       if (isUnassigned) {
-        // ako je user u lobbiju unasigned swapa ga u kliknuti team
         await switchTeam({
           lobbyId,
           userId,
           targetTeam,
         });
       } else if (!currentTeam) {
-        // Ako nije u lobbiju uopce (sigurnost iako se nebi trebalo desit)
         await joinLobby({
           lobbyId,
           userId,
           password,
         });
       } else if (currentTeam !== targetTeam) {
-        // ako je u drugon timu i zeli swap
         await switchTeam({
           lobbyId,
           userId,
           targetTeam,
         });
       }
-      // else: ako je u ispravnon timu onda nemoj nista napravit
     } catch (error) {
       console.error("Failed to join or switch team:", error);
       alert("Failed to join or switch team.");
@@ -162,7 +173,6 @@ const LobbyPage = () => {
       alert("Could not start match.");
     }
   };
-
 
   const renderSlot = (team, index) => {
     const player = lobby?.[team]?.[index];
@@ -203,10 +213,7 @@ const LobbyPage = () => {
       <div className="lobby-id">LOBBY ID: {lobby?.id || lobbyId}</div>
 
       <div className="lobby-code">
-        CODE:{" "}
-        {lobby?.password ||
-          localStorage.getItem(`lobbyPassword_${lobbyId}`) ||
-          "N/A"}
+        CODE: {lobby?.password || localStorage.getItem(`lobbyPassword_${lobbyId}`) || "N/A"}
       </div>
     </div>
   );

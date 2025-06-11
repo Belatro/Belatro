@@ -65,7 +65,8 @@ const FriendsList = () => {
       const loadFriendRequests = async () => {
         try {
           const requests = await fetchFriendRequests(userId);
-          setFriendRequests(requests);
+            const filtered = requests.filter((req) => req.fromUser?.id !== userId);
+            setFriendRequests(filtered);
         } catch (error) {
           console.error("Error fetching friend requests:", error);
         }

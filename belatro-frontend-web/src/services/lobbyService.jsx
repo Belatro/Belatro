@@ -44,6 +44,12 @@ export const switchTeam = async (switchRequest) => {
   return response.data;
 };
 
+// PATCH leave lobby
+export const leaveLobby = async (lobbyId, leaveRequest) => {
+  const response = await axios.patch(`${API_BASE_URL}/${lobbyId}/leave`, leaveRequest);
+  return response.data;
+};
+
 // DELETE lobby
 export const deleteLobby = async (lobbyId) => {
   const response = await axios.delete(`${API_BASE_URL}/${lobbyId}`);
