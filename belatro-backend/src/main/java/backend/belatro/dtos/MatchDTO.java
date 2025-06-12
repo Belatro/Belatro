@@ -1,8 +1,10 @@
 package backend.belatro.dtos;
 
 import backend.belatro.enums.GameMode;
-import backend.belatro.pojo.Move;
+import backend.belatro.util.MatchUtils;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
+
 import java.util.Date;
 import java.util.List;
 
@@ -13,8 +15,14 @@ public class MatchDTO {
     private List<LobbyDTO.UserSimpleDTO> teamB;
     private LobbyDTO originLobby;
     private GameMode gameMode;
-    private List<Move> moves;
     private String result;
     private Date startTime;
     private Date endTime;
+    @JsonProperty("winnerTeam")
+    public String winnerTeam() {
+        var r = MatchUtils.parseWinner(result);
+        return r != null ? r : "Draw";
+    }
+
+
 }

@@ -2,18 +2,19 @@ package backend.belatro.pojo.gamelogic;
 
 import backend.belatro.pojo.gamelogic.enums.Boja;
 import backend.belatro.pojo.gamelogic.enums.Rank;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Comparator;
+import java.util.*;
 
 /**
  * Represents a single trick in a Belot game.
  * A trick consists of one card played by each player, with the first card played by the lead player.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
+
 public class Trick {
     @Getter
     private final String leadPlayerId;
@@ -22,13 +23,17 @@ public class Trick {
     private final Boja trump;
 
     private final Map<String, Card> plays;
+    private static final String PLACEHOLDER_LEAD = "_NO_LEAD_";
 
 
-    public Trick(String leadPlayerId, Boja trump) {
-        this.leadPlayerId = Objects.requireNonNull(leadPlayerId, "Lead player ID cannot be null");
-        this.trump = trump;
-        this.plays = new HashMap<>();
+    @JsonCreator
+    public Trick(@JsonProperty("leadPlayerId") String leadPlayerId,
+                 @JsonProperty("trump")        Boja   trump) {
+        this.leadPlayerId = Objects.requireNonNull(leadPlayerId);
+        this.trump        = trump;
+        this.plays        = new HashMap<>();
     }
+    public static Trick empty() { return new Trick(PLACEHOLDER_LEAD,null); }
 
     /**
      * Adds a card played by a player to this trick.
@@ -51,8 +56,10 @@ public class Trick {
 
 
     public boolean isComplete(int playerCount) {
+//        System.out.println("Checking if trick is complete. Current plays: " + plays.size() + ", Required: " + playerCount);
         return plays.size() == playerCount;
     }
+
 
     /**
      * @return An unmodifiable map of player IDs to cards
@@ -182,9 +189,36 @@ public class Trick {
                 case KRALJ -> 4;  // King
                 case BABA -> 3;  // Queen
                 case DECKO -> 2;  // Jack
+                case DEVETKA -> 0;
                 default -> 0;
             };
         }
+    }
+
+    /**
+     * @return the Card that is currently winning this trick,
+     *         or null if no cards have been played yet.
+     */
+    public Card getWinningCard() {
+        if (plays.isEmpty()) {
+            return null;
+        }
+
+        Card winningCard = getLeadCard();
+        Boja leadSuit = winningCard.getBoja();
+
+        for (Card challenger : plays.values()) {
+            // skip comparing the lead against itself
+            if (challenger == winningCard) {
+                continue;
+            }
+            // if challenger beats what we thought was winning, adopt it
+            if (!isCardWinning(winningCard, challenger, leadSuit)) {
+                winningCard = challenger;
+            }
+        }
+
+        return winningCard;
     }
 
     /**

@@ -1,16 +1,24 @@
 package backend.belatro.services;
 
 
+import backend.belatro.dtos.UserDto;
 import backend.belatro.dtos.UserUpdateDTO;
 import backend.belatro.exceptions.UserNotFoundException;
 import backend.belatro.models.User;
 import backend.belatro.repos.UserRepo;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.file.AccessDeniedException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class UserService {
@@ -24,9 +32,24 @@ public class UserService {
         return userRepo.findAll();
     }
 
+    public List<UserDto> listAllUsers() {
+        return
+                findAll()                // assume this returns List<User>
+                .stream()
+                .map(u -> new UserDto(
+                        u.getId(),
+                        u.getUsername(),
+                        u.getEmail(),
+                        u.getRoles(),
+                        u.isDeletionRequested()
+                ))
+                .collect(Collectors.toList());
+    }
+
     public Optional<User> findById(String id) {
         return userRepo.findById(id);
     }
+
     public User createUser(User user) {
         user.setId(null);
         user.setEloRating(1200);
@@ -51,5 +74,32 @@ public class UserService {
     public void deleteUser(String id) {
         userRepo.deleteById(id);
     }
-}
+
+    public Optional<User> findByUsername(String rawUsername) {
+        return userRepo.findByUsername(
+                rawUsername == null ? null : rawUsername.trim().toLowerCase(Locale.ROOT)
+        );
+    }
+    public User currentUser() throws AccessDeniedException {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        if (auth == null || !auth.isAuthenticated()
+                || auth instanceof AnonymousAuthenticationToken) {
+            throw new AccessDeniedException("Not authenticated");
+        }
+
+        // ‘getName()’ is the username by default
+        return userRepo.findByUsername(auth.getName())
+                .orElseThrow(() ->
+                        new UsernameNotFoundException(auth.getName()));
+    }
+    @Transactional
+    public void requestAccountDeletionById(String userId) {
+        User u = findById(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
+        u.setDeletionRequested(true);
+        userRepo.save(u);
+    }
+    }
+
 

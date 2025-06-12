@@ -1,4 +1,5 @@
 import axios from 'axios';
+import response from "sockjs-client/lib/event/trans-message";
 
 const API_BASE_URL = process.env.REACT_APP_API_URL;
 
@@ -13,6 +14,11 @@ axios.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+export const deleteRequest = async (id) => {
+
+    const response = await axios.post(`${API_BASE_URL}/user/${id}/request-forget`);
+  return response.data;
+}
 
 // GET za sve usere
 export const fetchAllUsers = async () => {

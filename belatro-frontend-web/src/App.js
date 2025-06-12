@@ -9,6 +9,7 @@ import NavBar from './components/NavBar';
 import MatchPage from './pages/MatchPage';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
+import AdminDashboard from "./pages/AdminDashboard";
 
 function App() {
   const [loggedInUser, setLoggedInUser] = useState(null);
@@ -32,6 +33,8 @@ function App() {
         <Route path="/profile" element={<ProfilePage user={loggedInUser} />} />
         <Route path="/lobby" element={<LobbyPage />} />
         <Route path="/match" element={<MatchPage />} />
+        <Route path="/admin/*"    element={<AdminDashboard />} />
+
       </Routes>
     </Router>
   );
