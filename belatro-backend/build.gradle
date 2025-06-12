@@ -12,7 +12,9 @@ java {
 		languageVersion = JavaLanguageVersion.of(23)
 	}
 }
-
+tasks.named('bootJar') {
+	archiveFileName = 'belatro.jar'   // makes the Dockerfile simpler
+}
 configurations {
 	compileOnly {
 		extendsFrom annotationProcessor
