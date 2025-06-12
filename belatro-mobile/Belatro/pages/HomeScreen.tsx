@@ -138,7 +138,7 @@ export default function HomePage({ navigation, route }: HomeScreenProps) {
             password: isPrivate ? password : undefined
         });
         setCreateLobbyModalVisible(false);
-        navigation.navigate('LobbyDetails', { lobbyId: response.data.id });
+        navigation.navigate('LobbyDetails', { lobbyId: response.data.id, password: isPrivate ? password : undefined });
     } catch (error) {
         console.error('Create lobby error:', (error as any)?.response?.data);
     }

@@ -5,6 +5,7 @@ import { useAuth } from '../context/authContext';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { LobbyDTO } from '../services/lobbyService';
+import styles from '../styles/styles';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'LobbyList'>;
 
@@ -50,10 +51,16 @@ export default function LobbyListScreen({ navigation }: Props) {
                 password
             });
             navigation.navigate('LobbyDetails', { lobbyId });
-        } catch (error) {
-            if (error instanceof Error) {
-                console.error('Join error:', (error as any)?.response?.data);
+        } catch (error: any) {
+            let message = 'Failed to join lobby. Please try again.';
+            if (error.response?.status === 403) {
+                message = 'Lobby is full or password is incorrect.';
+            } else if (error.response?.status === 404) {
+                message = 'Lobby not found.';
+            } else if (error.response?.data?.message) {
+                message = error.response.data.message;
             }
+            Alert.alert('Error', message);
         }
     };
 
@@ -74,24 +81,24 @@ export default function LobbyListScreen({ navigation }: Props) {
                         (item.teamBPlayers?.length || 0) +
                         (item.unassignedPlayers?.length || 0)}/4
                 </Text>
-                {item.privateLobby && <Text>🔒 Private</Text>}
+                {item.privateLobby && <Text>Private</Text>}
             </TouchableOpacity>
         ),
         [openPasswordModal, handleJoinLobby, styles]
     );
 
     return (
-        <View style={styles.container}>
+        <View style={styles.lobbycontainer}>
             <FlatList
                 data={lobbies}
                 keyExtractor={(item) => item.id}
                 renderItem={renderLobbyItem}
             />
             <TouchableOpacity
-                style={styles.createButton}
+                style={styles.createButtonlobby}
                 onPress={() => navigation.navigate('Home', { openCreateLobby: true })}
             >
-                <Text style={styles.buttonText}>Create Lobby</Text>
+                <Text style={styles.buttonTextlobby}>Create Lobby</Text>
             </TouchableOpacity>
             <Modal visible={passwordModalVisible} transparent animationType="slide">
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
@@ -117,15 +124,3 @@ export default function LobbyListScreen({ navigation }: Props) {
     );
 }
 
-const styles = StyleSheet.create({
-    container: { flex: 1, padding: 20 },
-    lobbyItem: { padding: 15, borderBottomWidth: 1, borderColor: '#444' },
-    lobbyName: { fontSize: 18, fontWeight: 'bold' },
-    createButton: {
-        backgroundColor: '#4CAF50',
-        padding: 15,
-        borderRadius: 5,
-        marginTop: 10
-    },
-    buttonText: { color: 'white', textAlign: 'center' }
-});

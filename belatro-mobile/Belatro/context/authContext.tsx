@@ -1,10 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { registerUser } from '../services/userService';
+import { loginUser } from '../services/userService';
 
 interface User {
   id: string;
   username: string;
   email?: string;
+  token: string;
 }
 
 interface AuthContextType {
@@ -12,6 +15,7 @@ interface AuthContextType {
   token: string | null;
   login: (user: User, token: string) => Promise<void>;
   logout: () => Promise<void>;
+  register: (userData: { username: string; email: string; password: string }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -19,6 +23,19 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
+
+  const register = async (userData: { username: string; email: string; password: string }) => {
+  try {
+    const response = await registerUser(userData);
+    const loginResponse = await loginUser({
+      username: userData.username,
+      password: userData.password,
+    });
+    await login(loginResponse.data.user, loginResponse.data.token);
+  } catch (error) {
+    throw error;
+  }
+};
 
   useEffect(() => {
     const loadAuth = async () => {
@@ -33,6 +50,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (user: User, token: string) => {
+    console.log('Token after login:', token);
     setUser(user);
     setToken(token);
     await AsyncStorage.setItem('jwtToken', token);
@@ -47,7 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
+    <AuthContext.Provider value={{ user, token, login, logout, register }}>
       {children}
     </AuthContext.Provider>
   );

@@ -50,4 +50,6 @@ export const lobbyService = {
         axiosInstance.patch(`/lobbies/${lobbyId}/leave`, { username }),
     deleteLobby: (lobbyId: string) =>
         axiosInstance.delete(`/lobbies/${lobbyId}`),
+    updateLobby: (lobbyData: LobbyDTO) => 
+    axiosInstance.put('/lobbies', lobbyData),
 };

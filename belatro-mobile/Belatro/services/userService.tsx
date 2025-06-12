@@ -1,8 +1,23 @@
 import axios from 'axios';
-import axiosInstance from './api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://10.0.2.2:8080/api/auth';
-const USER_URL = 'http://10.0.2.2:8080/user';
+const API_URL = 'http://10.0.2.2:8080';
+
+const axiosInstance = axios.create({
+  baseURL: API_URL,
+});
+
+axiosInstance.interceptors.request.use(
+  async config => {
+    const token = await AsyncStorage.getItem('jwtToken');
+    console.log('Token in interceptor:', token);
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  error => Promise.reject(error)
+);
 
 export interface RegisterPayload {
   username: string;
@@ -23,7 +38,7 @@ export interface User {
 }
 
 export async function registerUser(payload: RegisterPayload) {
-  return axios.post(`${API_URL}/signup`, payload, { 
+  return axiosInstance.post('/api/auth/signup', payload, { 
     headers: { 'Content-Type': 'application/json' },
   });
 }
@@ -39,9 +54,9 @@ export async function updateUser(id: string, payload: UserUpdatePayload) {
 }
 
 export async function loginUser(loginRequest: { username: string; password: string }) {
-  return axios.post(`${API_URL}/login`, loginRequest);
+  return axiosInstance.post('/api/auth/login', loginRequest);
 }
 
 export async function getUserById(id: string) {
-  return axiosInstance.get(`${USER_URL}/${id}`);
+  return axiosInstance.get(`/user/${id}`);
 }

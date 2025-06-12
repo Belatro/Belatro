@@ -24,8 +24,8 @@ export type RootStackParamList = {
     openCreateLobby?: boolean;
   };
   LobbyList: undefined;
-  LobbyDetails: { lobbyId: string };
-  Match: undefined;
+  LobbyDetails: { lobbyId: string, password?: string };
+  Match: { matchId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -38,7 +38,7 @@ export default function App() {
           <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />
           <Stack.Screen name="SignUp" component={SignUpScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="LobbyList" component={LobbyListScreen}  />
+          <Stack.Screen name="LobbyList" component={LobbyListScreen} />
           <Stack.Screen name="LobbyDetails" component={LobbyDetailsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Match" component={MatchScreen} options={{ headerShown: false }} />
         </Stack.Navigator>

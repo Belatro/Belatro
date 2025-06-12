@@ -33,7 +33,15 @@ export default function SignInScreen({ navigation }: { navigation: any }) {
                 password: form.password
             });
             const { token, user } = response.data;
-            await login(user, token);
+            console.log('Login response:', response.data);
+            console.log('Token:', token);
+            console.log('User:', user);
+            await login({
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                token: token,
+            }, token);
             Alert.alert('Success', 'Successfully logged in!', [
                 {
                     text: 'OK', onPress: () => navigation.navigate('Home', {
@@ -44,16 +52,20 @@ export default function SignInScreen({ navigation }: { navigation: any }) {
                 },
             ]);
         } catch (error: any) {
+            console.error('Login error:', error);
+            let message = 'Login failed. Please try again.';
             if (error.response) {
-                console.log('Error response:', error.response.data, error.response.status);
-                Alert.alert('Error', error.response.data.message || 'Login failed');
+                if (error.response.status === 403) {
+                    message = 'Access denied. Please check your username and password.';
+                } else if (error.response.data?.message) {
+                    message = error.response.data.message;
+                }
             } else if (error.request) {
-                console.log('Error request:', error.request);
-                Alert.alert('Error', 'No response from server');
+                message = 'Unable to connect to the server. Please check your network.';
             } else {
-                console.log('Error message:', error.message);
-                Alert.alert('Error', error.message);
+                message = error.message || 'An unexpected error occurred.';
             }
+            Alert.alert('Error', message);
         } finally {
             setIsLoading(false);
         }

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { SafeAreaView, View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { registerUser } from '../services/userService';
 import styles from '../styles/styles';
-
+import { useAuth } from '../context/authContext';
 
 export default function SignUpScreen({ navigation }: { navigation: any }) {
+    const { register } = useAuth();
     const [form, setForm] = useState({
         username: '',
         email: '',
@@ -42,7 +42,7 @@ export default function SignUpScreen({ navigation }: { navigation: any }) {
         if (!validate()) return;
         setIsLoading(true);
         try {
-            await registerUser({
+            await register({
                 username: form.username,
                 email: form.email,
                 password: form.password,
