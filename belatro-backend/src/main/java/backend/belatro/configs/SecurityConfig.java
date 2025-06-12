@@ -95,7 +95,7 @@ public class SecurityConfig {
                         .requestMatchers("/error").permitAll()              // ← add this
 
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/ws/**","/index.html")
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/ws/**","ws-native/","/index.html")
                         .permitAll()
                         .anyRequest().authenticated()
                 )
