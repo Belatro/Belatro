@@ -1,7 +1,7 @@
 import axios from 'axios';
 import response from "sockjs-client/lib/event/trans-message";
 
-const API_BASE_URL = 'http://localhost:8080';
+const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 axios.interceptors.request.use(
   (config) => {

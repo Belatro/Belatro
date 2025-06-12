@@ -1,11 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from "react-router-dom";
+import { joinRankedQueue, leaveRankedQueue } from "../services/rankedService";
+import SockJS from "sockjs-client";
+import webstomp from "webstomp-client";
 import '../App.css';
 
-const LobbyModeModal = ({ onClose, onHost, onJoin }) => {
-  const [step, setStep] = useState("select"); // select host join
+const LobbyModeModal = ({ onClose, onHost, onJoin, mode }) => {
+  const [step, setStep] = useState("select");
   const [password, setPassword] = useState("");
   const [joinLobbyId, setJoinLobbyId] = useState("");
   const [joinPassword, setJoinPassword] = useState("");
+  const navigate = useNavigate();
+  
+  useEffect(() => {
+    let client;
+    const token = localStorage.getItem("token");
+
+    if (mode === "Ranked") {
+      setStep("rankedIntro");
+
+      const socket = new SockJS(`${process.env.REACT_APP_API_URL}/ws`);
+      client = webstomp.over(socket);
+      client.debug = str => console.log("!!!!!!!!!!!! [STOMP DEBUG]:", str);
+
+      client.connect(
+        { Authorization: `Bearer ${token}` },
+        () => {
+          console.log("!!!!!!!!!!!! STOMP client connected");
+
+          client.subscribe("/user/queue/ranked/status", (msg) => {
+            console.log("!!!!!!!!!!!! WebSocket message received:", msg.body);
+
+            const data = JSON.parse(msg.body);
+
+            if (data.state === "IN_QUEUE") {
+              console.log("!!!!!!!!!!!!Still in queue...");
+            } else if (data.state === "MATCH_FOUND") {
+              console.log("!!!!!!!!!!!! Match found! Navigating to match:", data.matchId);
+              navigate(`/match/${data.matchId}`);
+            } else if (["CANCELLED", "ERROR"].includes(data.state)) {
+              console.warn("!!!!!!!!!!!! Queue cancelled or errored. Closing modal.");
+              onClose();
+            }
+          });
+        },
+        (error) => {
+          console.error("!!!!!!!!!!!! STOMP connection failed", error);
+        }
+      );
+
+    } else {
+      setStep("select");
+    }
+
+    return () => {
+      if (client?.connected) {
+        client.disconnect();
+      }
+    };
+  }, [mode]);
+
 
   const handleHostClick = () => setStep("host");
   const handleJoinClick = () => setStep("join");
@@ -19,6 +73,18 @@ const LobbyModeModal = ({ onClose, onHost, onJoin }) => {
     onJoin(joinLobbyId, joinPassword);
     setJoinLobbyId("");
     setJoinPassword("");
+  };
+
+  const handleJoinRankedQueue = async () => {
+    setStep("rankedWaiting");
+    try {
+      const token = localStorage.getItem("token");
+      await joinRankedQueue(token);
+    } catch (err) {
+      console.error("Failed to join ranked queue:", err);
+      setStep("rankedIntro");
+      alert("Could not join queue.");
+    }
   };
 
   const renderContent = () => {
@@ -76,6 +142,29 @@ const LobbyModeModal = ({ onClose, onHost, onJoin }) => {
             <div className="button-row">
               <button className="lr-button" onClick={handleJoinSubmit}>JOIN</button>
               <button className="lr-button" onClick={() => setStep("select")}>BACK</button>
+            </div>
+          </>
+        );
+
+      case "rankedIntro":
+        return (
+          <>
+            <h2><strong>RANKED QUEUE</strong></h2>
+            <p>Join the queue to compete in ranked Belatro.</p>
+            <div className="button-row">
+              <button className="lr-button" onClick={handleJoinRankedQueue}>JOIN QUEUE</button>
+              <button className="lr-button" onClick={onClose}>CANCEL</button>
+            </div>
+          </>
+        );
+
+      case "rankedWaiting":
+        return (
+          <>
+            <h2><strong>WAITING IN QUEUE</strong></h2>
+            <p>Waiting in queue for ranked match...</p>
+            <div className="button-row">
+              <button className="lr-button" onClick={onClose}>LEAVE QUEUE</button>
             </div>
           </>
         );
