@@ -11,7 +11,7 @@ import webstomp from 'webstomp-client';
 // mockovi
 jest.mock('sockjs-client');
 jest.mock('webstomp-client', () => ({
-  over: jest.fn()
+  over: jest.fn(),
 }));
 
 const mockConnect = jest.fn();
@@ -55,11 +55,11 @@ describe('MatchPage WebSocket Connection', () => {
     );//rendera fejk MatchPage
 
     await waitFor(() => {
-      expect(SockJS).toHaveBeenCalledWith('http://localhost:8080/ws?user=testUser');
+      expect(SockJS).toHaveBeenCalledWith(`${process.env.REACT_APP_API_URL}/ws?user=testUser`);
       expect(mockConnect).toHaveBeenCalled();
       expect(mockSubscribe).toHaveBeenCalledWith('/topic/games/1111222233334444', expect.any(Function));
       expect(mockSubscribe).toHaveBeenCalledWith('/user/queue/games/1111222233334444', expect.any(Function));
       expect(mockSend).toHaveBeenCalledWith('/app/games/1111222233334444/refresh', {}, '');
-    });//provjerava da je ws kontektiran na tocan url, subscirban na public i private kanal, i posalje refresh backendu
+    });//provjerava da je ws konektiran na tocan url, subscriban na public i private kanal, i posalje refresh backendu
   });
 });

@@ -1,22 +1,22 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8080/matches';
+const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 // POST create match
 export const createMatch = async (matchData) => {
-  const response = await axios.post(`${API_BASE_URL}`, matchData);
+  const response = await axios.post(`${API_BASE_URL}/matches`, matchData);
   return response.data;
 };
 
 // GET match by ID - public 
 export const getMatchById = async (matchId) => {
-  const response = await axios.get(`${API_BASE_URL}/${matchId}`);
+  const response = await axios.get(`${API_BASE_URL}/matches/${matchId}`);
   return response.data;
 };
 
 // GET match state za trenutnog usera - private view
 export const getPrivateMatchState = async (matchId, jwtToken) => {
-  const response = await axios.get(`${API_BASE_URL}/${matchId}/private`, {
+  const response = await axios.get(`${API_BASE_URL}/matches/${matchId}/private`, {
     headers: {
       Authorization: `Bearer ${jwtToken}`,
     },
@@ -27,7 +27,7 @@ export const getPrivateMatchState = async (matchId, jwtToken) => {
 // POST play card
 export const playCard = async (matchId, payload, jwtToken) => {
   const response = await axios.post(
-    `${API_BASE_URL}/${matchId}/play`,
+    `${API_BASE_URL}/matches/${matchId}/play`,
     payload,
     {
       headers: {
@@ -41,7 +41,7 @@ export const playCard = async (matchId, payload, jwtToken) => {
 // POST make bid
 export const makeBid = async (matchId, payload, jwtToken) => {
   const response = await axios.post(
-    `${API_BASE_URL}/${matchId}/bid`,
+    `${API_BASE_URL}/matches/${matchId}/bid`,
     payload,
     {
       headers: {
@@ -55,7 +55,7 @@ export const makeBid = async (matchId, payload, jwtToken) => {
 // POST refresh match state
 export const refreshMatch = async (matchId, jwtToken) => {
   const response = await axios.post(
-    `${API_BASE_URL}/${matchId}/refresh`,
+    `${API_BASE_URL}/matches/${matchId}/refresh`,
     {},
     {
       headers: {
@@ -68,6 +68,6 @@ export const refreshMatch = async (matchId, jwtToken) => {
 
 // GET match by lobby ID
 export const getMatchByLobbyId = async (lobbyId) => {
-  const response = await axios.get(`${API_BASE_URL}/getmatchbylobbyid/${lobbyId}`);
+  const response = await axios.get(`${API_BASE_URL}/matches/getmatchbylobbyid/${lobbyId}`);
   return response.data;
 };

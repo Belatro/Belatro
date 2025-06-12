@@ -50,7 +50,7 @@ const MatchPage = () => {
   const connectWebSocket = () => {
     setConnectionStatus("connecting");
 
-    const sock = new SockJS(`http://localhost:8080/ws?user=${username}`);
+    const sock = new SockJS(`${process.env.REACT_APP_API_URL}/ws?user=${username}`);
     const client = webstomp.over(sock);
 
     client.connect(

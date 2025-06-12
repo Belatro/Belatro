@@ -12,9 +12,9 @@ describe('Lobby Service', () => {
 
     axios.post.mockResolvedValueOnce(mockResponse);
 
-    const result = await createLobby(mockLobbyData); //calla create lobby sa fejk datom od gore
+    const result = await createLobby(mockLobbyData); //calla create lobby sa fejk daton od gore
 
     expect(result).toEqual(mockResponse.data); // provjerava jeli returnalo response datu
-    expect(axios.post).toHaveBeenCalledWith('http://localhost:8080/lobbies', mockLobbyData);// provjeravaja axios callan sa pravin url i daton
+    expect(axios.post).toHaveBeenCalledWith(`${process.env.REACT_APP_API_URL}/lobbies`, mockLobbyData);// provjerava axios callan sa pravin url i daton
   });
 });

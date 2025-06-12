@@ -19,7 +19,7 @@ const LobbyModeModal = ({ onClose, onHost, onJoin, mode }) => {
     if (mode === "Ranked") {
       setStep("rankedIntro");
 
-      const socket = new SockJS("http://localhost:8080/ws");
+      const socket = new SockJS(`${process.env.REACT_APP_API_URL}/ws`);
       client = webstomp.over(socket);
       client.debug = str => console.log("!!!!!!!!!!!! [STOMP DEBUG]:", str);
 
