@@ -10,7 +10,7 @@ import HomeScreen from 'C:\\Users\\marko\\Desktop\\Projekti\\OICAR\\belatro-mobi
 import LobbyListScreen from 'C:\\Users\\marko\\Desktop\\Projekti\\OICAR\\belatro-mobile\\Belatro\\pages\\LobbyListScreen';
 import LobbyDetailsScreen from 'C:\\Users\\marko\\Desktop\\Projekti\\OICAR\\belatro-mobile\\Belatro\\pages\\LobbyDetailsScreen';
 import MatchScreen from 'C:\\Users\\marko\\Desktop\\Projekti\\OICAR\\belatro-mobile\\Belatro\\pages\\MatchScreen';
-
+import MatchHistoryScreen from 'C:\\Users\\marko\\Desktop\\Projekti\\OICAR\\belatro-mobile\\Belatro\\pages\\MatchHistoryScreen';
 
 export type RootStackParamList = {
   SignIn: undefined;
@@ -26,6 +26,7 @@ export type RootStackParamList = {
   LobbyList: undefined;
   LobbyDetails: { lobbyId: string, password?: string };
   Match: { matchId: string };
+  MatchHistory: { userId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -41,6 +42,7 @@ export default function App() {
           <Stack.Screen name="LobbyList" component={LobbyListScreen} />
           <Stack.Screen name="LobbyDetails" component={LobbyDetailsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Match" component={MatchScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="MatchHistory" component={MatchHistoryScreen} options={{ title: 'Match History' }}/>
         </Stack.Navigator>
       </NavigationContainer>
     </AuthProvider>
