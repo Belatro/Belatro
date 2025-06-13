@@ -10,6 +10,7 @@ import {
     ScrollView,
     TextInput,
     Alert,
+    Button,
 } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -19,6 +20,7 @@ import { friendshipService, UserSearchResult, Friendship } from '../services/fri
 import styles from '../styles/styles';
 import { lobbyService } from '../services/lobbyService';
 import { useAuth } from '../context/authContext';
+import { matchService } from '../services/matchService';
 
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -96,6 +98,24 @@ export default function HomePage({ navigation, route }: HomeScreenProps) {
         }
     }, [activeFriendsTab, friendsModalVisible]);
 
+
+    useEffect(() => {
+        if (!user) return; // Guard against null user
+
+        navigation.setOptions({
+            headerRight: () => (
+                <TouchableOpacity
+                    onPress={() => navigation.navigate('MatchHistory', { userId: user.id })}
+                    style={{ marginRight: 15, padding: 5 }}
+                    activeOpacity={0.7}
+                >
+                    <Text style={{ color: 'white', fontWeight: 'bold' }}>Match History</Text>
+                </TouchableOpacity>
+            ),
+        });
+    }, [navigation, user]);
+
+
     const fetchFriends = async () => {
         setIsLoadingFriends(true);
         try {
@@ -128,21 +148,21 @@ export default function HomePage({ navigation, route }: HomeScreenProps) {
     };
 
     const handleCreateLobby = async () => {
-    if (!user) return;
-    try {
-        const response = await lobbyService.createLobby({
-            name: lobbyName,
-            hostUser: { id: user.id, username: user.username },
-            gameMode: 'FRIENDS',
-            privateLobby: isPrivate,
-            password: isPrivate ? password : undefined
-        });
-        setCreateLobbyModalVisible(false);
-        navigation.navigate('LobbyDetails', { lobbyId: response.data.id, password: isPrivate ? password : undefined });
-    } catch (error) {
-        console.error('Create lobby error:', (error as any)?.response?.data);
-    }
-};
+        if (!user) return;
+        try {
+            const response = await lobbyService.createLobby({
+                name: lobbyName,
+                hostUser: { id: user.id, username: user.username },
+                gameMode: 'FRIENDS',
+                privateLobby: isPrivate,
+                password: isPrivate ? password : undefined
+            });
+            setCreateLobbyModalVisible(false);
+            navigation.navigate('LobbyDetails', { lobbyId: response.data.id, password: isPrivate ? password : undefined });
+        } catch (error) {
+            console.error('Create lobby error:', (error as any)?.response?.data);
+        }
+    };
 
 
     useEffect(() => {
@@ -221,8 +241,8 @@ export default function HomePage({ navigation, route }: HomeScreenProps) {
                         )}
                         <Text style={styles.modalTitle}>{tutorialTexts[language].title}</Text>
                         <Text style={styles.modalText}>{tutorialTexts[language].body}</Text>
-                        <Pressable style={styles.closeButton} onPress={() => setTutorialVisible(false)}>
-                            <Text style={styles.closeButtonText}>Close</Text>
+                        <Pressable style={styles.closeButtonTutorial} onPress={() => setTutorialVisible(false)}>
+                            <Text style={styles.closeButtonTextTutorial}>Close</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -554,6 +574,23 @@ export default function HomePage({ navigation, route }: HomeScreenProps) {
                     </View>
                 </View>
             </Modal>
+            {user && (
+                <TouchableOpacity
+                    onPress={() => navigation.navigate('MatchHistory', { userId: user.id })}
+                    style={{
+                        backgroundColor: '#1e1e1e',
+                        paddingHorizontal: 0,
+                        paddingVertical: 0,
+                        borderRadius: 8,
+                        width: 120,
+                        height:40,
+                        marginLeft:650
+                    }}
+                    activeOpacity={0.7}
+                >
+                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>Match History</Text>
+                </TouchableOpacity>
+            )}
 
             <View style={styles.headerContainer}>
                 <Text style={styles.headerText}>Belatro</Text>

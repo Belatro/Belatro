@@ -34,6 +34,7 @@
   "devDependencies": {
     "@babel/core": "^7.27.4",
     "@babel/plugin-transform-flow-strip-types": "^7.27.1",
+    "@babel/plugin-transform-private-methods": "^7.27.1",
     "@babel/preset-env": "^7.27.2",
     "@babel/preset-react": "^7.27.1",
     "@babel/preset-typescript": "^7.27.1",
@@ -46,6 +47,7 @@
     "babel-jest": "^30.0.0",
     "jest": "^30.0.0",
     "metro-react-native-babel-preset": "^0.77.0",
+    "patch-package": "^8.0.0",
     "ts-jest": "^29.4.0",
     "typescript": "^5.3.3"
   },

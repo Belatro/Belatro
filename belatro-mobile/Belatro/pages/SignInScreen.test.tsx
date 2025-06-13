@@ -3,16 +3,13 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import SignInScreen from './SignInScreen';
 
-// Mock navigation and auth context
 const mockNavigate = jest.fn();
 const mockLogin = jest.fn();
 
-// Mock userService.loginUser
 jest.mock('../services/userService', () => ({
   loginUser: jest.fn(),
 }));
 
-// Mock authContext.useAuth
 jest.mock('../context/authContext', () => ({
   useAuth: () => ({ login: mockLogin }),
 }));
@@ -20,11 +17,17 @@ jest.mock('../context/authContext', () => ({
 import { loginUser } from '../services/userService';
 const mockedLoginUser = loginUser as jest.MockedFunction<typeof loginUser>;
 
-beforeEach(() => {
-  jest.clearAllMocks();
-});
-
 describe('SignInScreen', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(console, 'error').mockImplementation(() => { });
+    jest.spyOn(console, 'warn').mockImplementation(() => { });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('renders the screen correctly', () => {
     const { getByText } = render(<SignInScreen navigation={{ navigate: mockNavigate }} />);
     expect(getByText('Sign in to Belatro')).toBeTruthy();
@@ -33,7 +36,7 @@ describe('SignInScreen', () => {
   });
 
   it('shows validation alert when username is empty', () => {
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => { });
     const { getByText } = render(<SignInScreen navigation={{ navigate: mockNavigate }} />);
     fireEvent.press(getByText('Sign in'));
     expect(alertSpy).toHaveBeenCalledWith('Validation', 'Username is required');
@@ -74,7 +77,7 @@ describe('SignInScreen', () => {
 
   it('shows error alert on login failure', async () => {
     mockedLoginUser.mockRejectedValueOnce({ response: { status: 403 } });
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => { });
 
     const { getByText, getByPlaceholderText } = render(<SignInScreen navigation={{ navigate: mockNavigate }} />);
     fireEvent.changeText(getByPlaceholderText('Username'), 'wronguser');

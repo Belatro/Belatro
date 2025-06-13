@@ -33,24 +33,18 @@ export default function SignInScreen({ navigation }: { navigation: any }) {
                 password: form.password
             });
             const { token, user } = response.data;
-            console.log('Login response:', response.data);
-            console.log('Token:', token);
-            console.log('User:', user);
             await login({
                 id: user.id,
                 username: user.username,
                 email: user.email,
                 token: token,
             }, token);
-            Alert.alert('Success', 'Successfully logged in!', [
-                {
-                    text: 'OK', onPress: () => navigation.navigate('Home', {
-                        userId: user.id,
-                        username: user.username,
-                        token: token
-                    })
-                },
-            ]);
+            Alert.alert('Success', 'Successfully logged in!');
+            navigation.navigate('Home', {
+                userId: user.id,
+                username: user.username,
+                token: token
+            });
         } catch (error: any) {
             console.error('Login error:', error);
             let message = 'Login failed. Please try again.';
@@ -86,6 +80,7 @@ export default function SignInScreen({ navigation }: { navigation: any }) {
                             style={styles.inputControl}
                             value={form.username}
                             onChangeText={(username) => setForm({ ...form, username })}
+                            placeholder="Username"
                         />
                     </View>
                     <View style={styles.input}>
@@ -95,6 +90,7 @@ export default function SignInScreen({ navigation }: { navigation: any }) {
                             style={styles.inputControl}
                             value={form.password}
                             onChangeText={(password) => setForm({ ...form, password })}
+                            placeholder="Password"
                         />
                     </View>
                     <TouchableOpacity

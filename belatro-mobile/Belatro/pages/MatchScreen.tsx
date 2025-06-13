@@ -101,7 +101,7 @@ const MatchScreen: React.FC<MatchScreenProps> = ({ route }) => {
 
     const connectWebSocket = (): Client => {
         const client = new Client({
-            brokerURL: `ws://10.0.2.2:8080/ws-native?user=${user?.username}&token=${user?.token}&X-Match-ID=${matchId}`,
+            brokerURL: `ws://10.0.2.2:8080/ws-native?user=${user?.username}`,
             reconnectDelay: 5000,
             heartbeatIncoming: 10000,
             heartbeatOutgoing: 10000,
@@ -113,6 +113,7 @@ const MatchScreen: React.FC<MatchScreenProps> = ({ route }) => {
                 "X-Match-ID": matchId,
             },
             onConnect: () => {
+                console.log('Connected :D');
                 setConnectionStatus('connected');
                 reconnectAttempts.current = 0;
                 client.subscribe(`/topic/games/${matchId}`, (message) => {
@@ -138,19 +139,19 @@ const MatchScreen: React.FC<MatchScreenProps> = ({ route }) => {
             },
             // debug: (str) => console.log('[STOMP]', str),
             onStompError: (error) => {
-                // console.error('STOMP error:', error);
+                console.error('STOMP error:', error);
                 setConnectionStatus('error');
                 handleReconnect();
             },
             onWebSocketError: (error) => {
-                // console.error('WebSocket error:', error);
+                console.error('WebSocket error:', error);
                 setConnectionStatus('error');
                 handleReconnect();
             },
         });
 
         client.onDisconnect = () => {
-            // console.log('WebSocket disconnected');
+            console.log('WebSocket disconnected');
             setConnectionStatus('disconnected');
             handleReconnect();
         };

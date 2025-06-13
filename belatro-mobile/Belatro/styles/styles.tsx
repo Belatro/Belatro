@@ -24,7 +24,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   headerContainer: {
-    marginTop: 70,
+    marginTop: 40,
     alignItems: 'center',
     marginBottom: 40,
   },
@@ -340,6 +340,20 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
+  closeButtonTutorial: {
+    backgroundColor: '#ff4d4d',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    flex: 1,
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  closeButtonTextTutorial: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
   closeButton: {
     backgroundColor: '#ff4d4d',
     borderRadius: 8,
@@ -365,6 +379,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 24,
     width: '80%',
+    height:'90%',
     alignItems: 'center',
   },
   modalTitle: {
