@@ -13,7 +13,8 @@ java {
 	}
 }
 tasks.named('bootJar') {
-	archiveFileName = 'belatro.jar'   // makes the Dockerfile simpler
+	archiveFileName = 'belatro.jar'
+// makes the Dockerfile simpler
 }
 configurations {
 	compileOnly {
@@ -68,6 +69,16 @@ dependencies {
 	testImplementation("org.testcontainers:mongodb")
 	implementation("org.springframework.security:spring-security-messaging")
 	testImplementation("org.springframework.security:spring-security-messaging")
+
+	// ---------- AWS SDK --------------------------------------------------
+	implementation platform('software.amazon.awssdk:bom:2.25.15') // keep the SDK in sync
+	implementation 'software.amazon.awssdk:s3'                    // S3 client (no version here)
+	implementation 'software.amazon.awssdk:url-connection-client' // lightweight HTTP layer
+
+	tasks.named('bootRun') {              // useful for local runs (`./gradlew bootRun`)
+		jvmArgs += ['-Djdk.tls.client.protocols=TLSv1.2']
+	}
+
 
 	tasks.named('test') {
 		useJUnitPlatform()
