@@ -68,7 +68,7 @@ public class SecurityConfig {
     @Bean @Order(1)
     SecurityFilterChain publicAuthChain(HttpSecurity http) throws Exception {
         http
-                .securityMatcher("/api/auth/**")
+                .securityMatcher("/api/auth/**","/actuator/**")
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -90,11 +90,14 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authenticationProvider(authProvider)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**")                       // ← new line
-                        .permitAll()
-                        .requestMatchers("/error").permitAll()              // ← add this
-
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                        .requestMatchers("/api/auth/**")
+                        .permitAll()
+                        .requestMatchers("/error").permitAll()
+
+
+
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/ws/**","ws-native/","/index.html")
                         .permitAll()
                         .anyRequest().authenticated()
