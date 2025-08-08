@@ -69,14 +69,21 @@ public class MatchmakingService {
 
     @Transactional
     public void leaveQueue(User user) {
-        queueRepo.findByUserIdAndStatus(user.getId(), QUEUED).ifPresent(e -> {
-            e.setStatus(CANCELLED);
-            queueRepo.save(e);
-            cache.remove(e);
+        lock.lock();
+        try {
+            var opt = queueRepo.findByUserIdAndStatus(user.getId(), QUEUED);
+            if (opt.isEmpty()) return;
 
-            // ★ new – cancelled frame
+            MatchmakingQueueEntry dbEntry = opt.get();
+            dbEntry.setStatus(CANCELLED);
+            queueRepo.save(dbEntry);
+
+            cache.removeByUserId(user.getId());
+
             pushStatus(user, QueueState.CANCELLED, 0, cache.size(), null);
-        });
+        } finally {
+            lock.unlock();
+        }
     }
 
     /* ─────────────────────────────────────────────────────────────── */
@@ -185,28 +192,56 @@ public class MatchmakingService {
                 dto);
     }
 
-    /** Very light ETA estimate: how many 30 s expansions until a match is *likely*. */
+    /**
+     * Returns an ETA (in whole seconds) for the given user or –1 if we cannot
+     * even guess (e.g. < 4 players queued).
+     *
+     * Strategy:
+     *   • sort queue by MMR
+     *   • enumerate every contiguous group of 4 players that includes the user
+     *   • for each group calculate how many “expansions” are needed until its
+     *     spread is ≤ allowedDiff
+     *   • pick the minimum
+     */
     private int estimateWaitSeconds(User u) {
         List<MatchmakingQueueEntry> pool = cache.snapshot();
         if (pool.size() < 4) return -1;
 
-        // assume player will pair with three closest mmr neighbours
         pool.sort(Comparator.comparingInt(MatchmakingQueueEntry::getEloSnapshot));
-        int idx = -1;
-        for (int i = 0; i < pool.size(); i++)
-            if (pool.get(i).getUserId().equals(u.getId())) { idx = i; break; }
-        if (idx == -1) return -1;
 
-        int left = Math.max(idx - 3, 0);
-        int right = Math.min(left + 3, pool.size() - 1);
-        int spread = pool.get(right).getEloSnapshot() - pool.get(left).getEloSnapshot();
+        // index of the querying user
+        int me = -1;
+        for (int i = 0; i < pool.size(); i++) {
+            if (pool.get(i).getUserId().equals(u.getId())) {
+                me = i;
+                break;
+            }
+        }
+        if (me == -1) return -1;   // not in queue → no ETA
 
-        // time until allowedDiff >= spread
-        int diffNeeded = spread - INITIAL_DIFF;
-        if (diffNeeded <= 0) return 5;   // should pop next tick
+        int bestExpansions = Integer.MAX_VALUE;
 
-        int expansions = (int) Math.ceil(diffNeeded / (double) EXPAND_STEP);
-        return expansions * (int) EXPAND_EVERY.getSeconds();
+
+        for (int i = 0; i <= pool.size() - 4; i++) {
+            int j = i + 3;
+            if (me < i || me > j) continue;   // user not inside this window
+
+            int spread = pool.get(j).getEloSnapshot() - pool.get(i).getEloSnapshot();
+            int diffNeeded = spread - INITIAL_DIFF;
+
+            int expansions = diffNeeded <= 0
+                    ? 0
+                    : (int) Math.ceil(diffNeeded / (double) EXPAND_STEP);
+
+            bestExpansions = Math.min(bestExpansions, expansions);
+            if (bestExpansions == 0) break;   // cannot get better
+        }
+
+        if (bestExpansions == Integer.MAX_VALUE) return -1;
+
+
+        int eta = bestExpansions * (int) EXPAND_EVERY.getSeconds() + 1;
+        return eta == 0 ? 5 : eta;   // keep the old “≈ next tick” behaviour
     }
 
     private User user(MatchmakingQueueEntry e) {
