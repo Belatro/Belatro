@@ -25,7 +25,9 @@ public class QueueCache {
     /** Compare first by rating, then by queuedAt for stability. */
     private final Comparator<MatchmakingQueueEntry> cmp =
             Comparator.comparingInt(MatchmakingQueueEntry::getEloSnapshot)
-                    .thenComparing(MatchmakingQueueEntry::getQueuedAt);
+                    .thenComparing(MatchmakingQueueEntry::getQueuedAt)
+                    .thenComparing(MatchmakingQueueEntry::getUserId);
+
 
     private final ConcurrentSkipListSet<MatchmakingQueueEntry> set =
             new ConcurrentSkipListSet<>(cmp);
@@ -40,10 +42,13 @@ public class QueueCache {
     /** Called on application startup to hydrate cache from Mongo */
     @EventListener(ApplicationReadyEvent.class)
     public void warmUpFromDb() {               // no extra args
-        repo.findByStatus(MatchmakingQueueEntry.Status.QUEUED)
-                .forEach(set::add);
+        set.addAll(repo.findByStatus(MatchmakingQueueEntry.Status.QUEUED));
         log.info("QueueCache warmed: {} entries", set.size());
     }
+    public boolean removeByUserId(String userId) {
+        return set.removeIf(e -> e.getUserId().equals(userId));
+    }
+
 
     public int size() {                        // ← NEW
         return set.size();
