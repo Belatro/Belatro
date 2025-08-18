@@ -121,7 +121,6 @@ public class BelotGameService {
     }
 
 
-    // BelotGameService
 
     public void save(BelotGame game) {
         BelotGame before = redis.opsForValue().get(KEY_PREFIX + game.getGameId());
@@ -276,12 +275,16 @@ public class BelotGameService {
                         : g.getCurrentPlayer() != null
                         && g.getCurrentPlayer().getId().equals(p.getId());
         boolean challengeUsed = g.hasPlayerChallenged(p);
+        List<Card> hand = p.getHand();
+        List<Card> sortedHand = new ArrayList<>(hand);
+        sortedHand.sort(BelotRankComparator.getSequenceComparator());
+
 
         return new PrivateGameView(
                 toPublicView(g),
-                p.getHand(),
+                sortedHand,
                 yourTurn,
-                challengeUsed                   // NEW
+                challengeUsed
         );
     }
     public record ChallengeOutcome(BelotGame game, boolean success) {}
