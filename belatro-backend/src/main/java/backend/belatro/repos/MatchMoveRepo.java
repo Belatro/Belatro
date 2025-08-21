@@ -21,4 +21,6 @@ public interface MatchMoveRepo extends MongoRepository<MatchMove, String> {
     List<MatchMove> findByMatchIdAndTypeOrderByNumberDesc(String matchId, MoveType moveType);
 
     Optional<MatchMove> findFirstByMatchIdAndTypeOrderByNumberDesc(String matchId, MoveType moveType);
+
+    Optional<MatchMove> findFirstByMatchIdOrderByNumberDesc(String matchId);
 }

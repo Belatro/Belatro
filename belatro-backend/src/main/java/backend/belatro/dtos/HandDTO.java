@@ -13,5 +13,7 @@ public record HandDTO(
         int handNo,
         List<TrumpCallDTO> trumpCalls,
         List<TrickDTO>     tricks,
-        List<ChallengeDTO> challenges
+        List<ChallengeDTO> challenges,
+        HandSummaryDTO handSummary  // NEW
+
 ) {}

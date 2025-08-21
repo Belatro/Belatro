@@ -1,3 +1,4 @@
+// Java
 package backend.belatro.services;
 
 import backend.belatro.annotations.GameAction;
@@ -15,16 +16,14 @@ import backend.belatro.pojo.gamelogic.enums.GameState;
 import backend.belatro.repos.UserRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,43 +32,72 @@ public class BelotGameService {
     private static final String KEY_PREFIX = "belot:game:";
     private static final Logger LOGGER = LoggerFactory.getLogger(BelotGameService.class);
     private static final int TARGET_SCORE = 1001;
+
     private final RedisTemplate<String, BelotGame> redis;
-    private final ApplicationEventPublisher eventPublisher; // Inject publisher
+    private final ApplicationEventPublisher eventPublisher;
     private final UserRepo userRepository;
     private final IMatchService matchService;
+    // Per-game serialization to prevent concurrent duplicate recording
+    private static final java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.locks.ReentrantLock> GAME_LOCKS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static java.util.concurrent.locks.ReentrantLock lockFor(String gameId) {
+        return GAME_LOCKS.computeIfAbsent(gameId, id -> new java.util.concurrent.locks.ReentrantLock());
+    }
 
-
-    public BelotGameService(RedisTemplate<String, BelotGame> redis, ApplicationEventPublisher eventPublisher, UserRepo userRepository, IMatchService matchService) {
+    @Autowired
+    public BelotGameService(RedisTemplate<String, BelotGame> redis,
+                            ApplicationEventPublisher eventPublisher,
+                            UserRepo userRepository,
+                            IMatchService matchService) {
         this.redis = redis;
         this.eventPublisher = eventPublisher;
         this.userRepository = userRepository;
         this.matchService = matchService;
     }
 
-
     public BelotGame start(String gameId, Team teamA, Team teamB) {
         BelotGame game = new BelotGame(gameId, teamA, teamB);
+        // attach service callback for end-of-hand summary recording
+        game.setHandCompletionCallback(this::recordHandEnd);
+
         game.startGame(); // Deals cards, sets bidding phase, etc.
         save(game);
+
         eventPublisher.publishEvent(new TurnStartedEvent(
                 gameId,
                 game.getCurrentLead().getId(),
                 GameState.BIDDING));
 
         eventPublisher.publishEvent(new GameStartedEvent(this, gameId));
-        System.out.println("Published GameStartedEvent for gameId: " + gameId); // For logging
+        LOGGER.info("Published GameStartedEvent for gameId: {}", gameId);
 
         return game;
     }
 
     @GameAction
     public ChallengeOutcome challengeHand(String gameId, String playerId) {
-        BelotGame g = getOrThrow(gameId);
-        boolean   ok = g.challengeHand(playerId);   // <- the flag
-        save(g);
-        return new ChallengeOutcome(g, ok);
-    }
+        var lock = lockFor(gameId);
+        lock.lock();
+        try {
+            BelotGame g = getOrThrow(gameId);
+            boolean ok = g.challengeHand(playerId);
+            save(g);
 
+            // record challenge attempt/result
+            matchService.recordMove(
+                    gameId,
+                    MoveType.CHALLENGE,
+                    Map.of(
+                            "playerId", playerId,
+                            "success", ok
+                    ),
+                    0.0
+            );
+
+            return new ChallengeOutcome(g, ok);
+        } finally {
+            lock.unlock();
+        }
+    }
 
     public BelotGame get(String gameId) {
         return redis.opsForValue().get(KEY_PREFIX + gameId);
@@ -81,46 +109,120 @@ public class BelotGameService {
                               Card card,
                               boolean declareBela) {
 
-        BelotGame game = getOrThrow(gameId);
-        Player p = game.findPlayerById(playerId);
-        boolean isTurn = (game.getGameState() == GameState.BIDDING && p.getId().equals(game.getCurrentLead().getId()))
-                || (game.getGameState() == GameState.PLAYING && game.getCurrentPlayer() != null
-                && p.getId().equals(game.getCurrentPlayer().getId()));
-        if (!isTurn) {
-            LOGGER.warn("Rejected out-of-turn play by {}", playerId);
-            return game; // or throw an exception to inform the client
+        var lock = lockFor(gameId);
+        lock.lock();
+        try {
+            BelotGame game = getOrThrow(gameId);
+            Player p = game.findPlayerById(playerId);
+
+            boolean isTurn =
+                    (game.getGameState() == GameState.BIDDING && p.getId().equals(game.getCurrentLead().getId()))
+                            || (game.getGameState() == GameState.PLAYING && game.getCurrentPlayer() != null
+                            && p.getId().equals(game.getCurrentPlayer().getId()));
+
+            if (!isTurn) {
+                LOGGER.warn("Rejected out-of-turn play by {}", playerId);
+                return game; // do not record
+            }
+
+            int beforeTricks = game.getCompletedTricks().size();
+
+            boolean accepted;
+            try {
+                accepted = game.playCard(p, card, declareBela);
+            } catch (RuntimeException ex) {
+                LOGGER.warn("Domain rejected play by {}: {}", playerId, ex.getMessage());
+                return game; // do not record
+            }
+            if (!accepted) {
+                LOGGER.warn("Domain refused play by {} for card {}", playerId, card);
+                return game; // do not record
+            }
+
+            save(game);
+
+            // Record PLAY_CARD
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("playerId", playerId);
+            payload.put("card", card.toString());
+            payload.put("declareBela", declareBela);
+            matchService.recordMove(gameId, MoveType.PLAY_CARD, payload, 0.0);
+
+            // If trick completed, record END_TRICK with winner and points
+            int afterTricks = game.getCompletedTricks().size();
+            if (afterTricks > beforeTricks) {
+                Trick last = game.getCompletedTricks().get(game.getCompletedTricks().size() - 1);
+                String winnerId = last.determineWinner();
+                int trickPoints = last.calculatePoints(); // raw card points (no +10 here)
+
+                matchService.recordMove(
+                        gameId,
+                        MoveType.END_TRICK,
+                        Map.of(
+                                "winnerId", winnerId,
+                                "points", trickPoints
+                        ),
+                        0.0
+                );
+            }
+
+            if (game.getCurrentPlayer() != null) {
+                eventPublisher.publishEvent(new TurnStartedEvent(
+                        game.getGameId(),
+                        game.getCurrentPlayer().getId(),
+                        GameState.PLAYING
+                ));
+            }
+
+            return game;
+        } finally {
+            lock.unlock();
         }
-
-        game.playCard(p, card, declareBela);
-        save(game);
-        eventPublisher.publishEvent(new TurnStartedEvent(gameId,
-                game.getCurrentPlayer().getId(),
-                GameState.PLAYING));
-
-        return game;
     }
+
 
     @GameAction
     public BelotGame placeBid(String gameId, Bid bid) {
-        BelotGame game = getOrThrow(gameId);
-        Player p = game.findPlayerById(bid.getPlayer().getId());
-        boolean isTurn = game.getGameState() == GameState.BIDDING &&
-                p.getId().equals(game.getCurrentLead().getId());
-        if (!isTurn) {
-            LOGGER.warn("Rejected out-of-turn bid by {}", p.getId());
+        var lock = lockFor(gameId);
+        lock.lock();
+        try {
+            BelotGame game = getOrThrow(gameId);
+            Player p = game.findPlayerById(bid.getPlayer().getId());
+
+            boolean isTurn = game.getGameState() == GameState.BIDDING
+                    && p.getId().equals(game.getCurrentLead().getId());
+            if (!isTurn) {
+                LOGGER.warn("Rejected out-of-turn bid by {}", p.getId());
+                return game; // do not record
+            }
+
+            boolean placed = game.placeBid(bid);
+            save(game);
+
+            if (placed) {
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("playerId", bid.getPlayer().getId());
+                payload.put("pass", bid.isPass());
+                if (bid.isTrumpCall() && bid.getSelectedTrump() != null) {
+                    payload.put("trump", bid.getSelectedTrump().name());
+                }
+                matchService.recordMove(gameId, MoveType.BID, payload, 0.0);
+            }
+
+            // still bidding → announce next bidder
+            if (game.getGameState() == GameState.BIDDING) {
+                eventPublisher.publishEvent(new TurnStartedEvent(
+                        gameId,
+                        game.getCurrentLead().getId(),
+                        GameState.BIDDING
+                ));
+            }
+
             return game;
+        } finally {
+            lock.unlock();
         }
-        game.placeBid(bid);
-        save(game);
-        if (game.getGameState() == GameState.BIDDING) {
-            eventPublisher.publishEvent(new TurnStartedEvent(gameId,
-                    game.getCurrentLead().getId(),
-                    GameState.BIDDING));
-        }
-        return game;
     }
-
-
 
     public void save(BelotGame game) {
         BelotGame before = redis.opsForValue().get(KEY_PREFIX + game.getGameId());
@@ -131,8 +233,8 @@ public class BelotGameService {
             eventPublisher.publishEvent(new GameStateChangedEvent(game.getGameId()));
         }
 
-        boolean justFinished = game.getGameState() == GameState.COMPLETED &&
-                (before == null || before.getGameState() != GameState.COMPLETED);
+        boolean justFinished = game.getGameState() == GameState.COMPLETED
+                && (before == null || before.getGameState() != GameState.COMPLETED);
 
         if (justFinished) {
             String winnerLine = String.format(
@@ -142,14 +244,14 @@ public class BelotGameService {
 
             matchService.finaliseMatch(game.getGameId(), winnerLine, Instant.now());
 
-
-            redis.expire(KEY_PREFIX + game.getGameId(), Duration.ofMinutes(3)); // grace period
+            // grace period for UI to fetch final states
+            redis.expire(KEY_PREFIX + game.getGameId(), Duration.ofMinutes(3));
         }
 
-
+        // If gameplay returned to bidding (new hand), notify who starts bidding
         if (before != null
                 && before.getGameState() != GameState.BIDDING
-                && game.getGameState()   == GameState.BIDDING) {
+                && game.getGameState() == GameState.BIDDING) {
 
             eventPublisher.publishEvent(new TurnStartedEvent(
                     game.getGameId(),
@@ -158,12 +260,12 @@ public class BelotGameService {
         }
     }
 
-
     private BelotGame getOrThrow(String gameId) {
         BelotGame g = get(gameId);
         if (g == null) {
             throw new IllegalStateException("Game not found: " + gameId);
         }
+        g.setHandCompletionCallback(this::recordHandEnd);
         return g;
     }
 
@@ -179,60 +281,42 @@ public class BelotGameService {
         List<PlayerPublicInfo> teamAList = g.getTeamA()
                 .getPlayers().stream()
                 .map(p -> {
-                    // Look up User by ID:
                     Optional<User> maybeUser = userRepository.findById(p.getId());
-                    String username = maybeUser
-                            .map(User::getUsername)
-                            .orElse(p.getId()); // fallback to ID if user record missing
-
-                    return new PlayerPublicInfo(
-                            username,
-                            p.getId(),
-                            p.getHand().size()
-                    );
+                    String username = maybeUser.map(User::getUsername).orElse(p.getId());
+                    return new PlayerPublicInfo(username, p.getId(), p.getHand().size());
                 })
                 .collect(Collectors.toList());
 
-        // 3) Build teamB’s PlayerPublicInfo list:
         List<PlayerPublicInfo> teamBList = g.getTeamB()
                 .getPlayers().stream()
                 .map(p -> {
                     Optional<User> maybeUser = userRepository.findById(p.getId());
-                    String username = maybeUser
-                            .map(User::getUsername)
-                            .orElse(p.getId());
-
-                    return new PlayerPublicInfo(
-                            username,
-                            p.getId(),
-                            p.getHand().size()
-                    );
+                    String username = maybeUser.map(User::getUsername).orElse(p.getId());
+                    return new PlayerPublicInfo(username, p.getId(), p.getHand().size());
                 })
                 .collect(Collectors.toList());
+
         Map<String, Boolean> challenged =
                 g.getPlayers().stream()
                         .collect(Collectors.toMap(Player::getId, g::hasPlayerChallenged));
+
         String winner = (g.getGameState() == GameState.COMPLETED)
                 ? g.getWinnerTeamId()
                 : null;
 
-        boolean tieBrk = (g.getTeamAScore() >= TARGET_SCORE &&
-                g.getTeamBScore() >= TARGET_SCORE &&
-                g.getTeamAScore() == g.getTeamBScore());
+        boolean tieBrk = (g.getTeamAScore() >= TARGET_SCORE
+                && g.getTeamBScore() >= TARGET_SCORE
+                && g.getTeamAScore() == g.getTeamBScore());
+
         List<PlayerPublicInfo> seatingOrder = g.getTurnOrder().stream()
                 .map(p -> {
                     Optional<User> maybeUser = userRepository.findById(p.getId());
-                    String username = maybeUser.map(User::getUsername)
-                            .orElse(p.getId());
-                    return new PlayerPublicInfo(
-                            username,
-                            p.getId(),
-                            p.getHand().size()
-                    );
+                    String username = maybeUser.map(User::getUsername).orElse(p.getId());
+                    return new PlayerPublicInfo(username, p.getId(), p.getHand().size());
                 })
                 .toList();
-        Trick trickForDisplay = getTrickForDisplay(g);
 
+        Trick trickForDisplay = getTrickForDisplay(g);
 
         return new PublicGameView(
                 g.getGameId(),
@@ -253,16 +337,13 @@ public class BelotGameService {
     private static Trick getTrickForDisplay(BelotGame g) {
         Trick trickForDisplay = g.getCurrentTrick();
 
-        /* --- NEW null-safe guard -------------------------------------------- */
-        if (trickForDisplay == null ||
-                (trickForDisplay.getPlays().isEmpty() && !g.getCompletedTricks().isEmpty())) {
+        if (trickForDisplay == null
+                || (trickForDisplay.getPlays().isEmpty() && !g.getCompletedTricks().isEmpty())) {
 
             if (!g.getCompletedTricks().isEmpty()) {
-                trickForDisplay = g.getCompletedTricks()
-                        .getLast();
+                trickForDisplay = g.getCompletedTricks().getLast();
             } else {
-                // brand-new game: create an empty Trick so the field is never null
-                trickForDisplay = Trick.empty();   // ← Trick has a no-arg ctor
+                trickForDisplay = Trick.empty();
             }
         }
         return trickForDisplay;
@@ -275,10 +356,9 @@ public class BelotGameService {
                         : g.getCurrentPlayer() != null
                         && g.getCurrentPlayer().getId().equals(p.getId());
         boolean challengeUsed = g.hasPlayerChallenged(p);
-        List<Card> hand = p.getHand();
-        List<Card> sortedHand = new ArrayList<>(hand);
-        sortedHand.sort(BelotRankComparator.getSequenceComparator());
 
+        List<Card> sortedHand = new ArrayList<>(p.getHand());
+        sortedHand.sort(BelotRankComparator.getSequenceComparator());
 
         return new PrivateGameView(
                 toPublicView(g),
@@ -287,18 +367,46 @@ public class BelotGameService {
                 challengeUsed
         );
     }
+
     public record ChallengeOutcome(BelotGame game, boolean success) {}
+
     public BelotGame cancelMatch(String matchId, String callerId) {
-        BelotGame g = getOrThrow(matchId);
+        var lock = lockFor(matchId);
+        lock.lock();
+        try {
+            BelotGame g = getOrThrow(matchId);
+            g.cancelMatch();
+            save(g);
 
+            matchService.recordMove(matchId, MoveType.SYSTEM, Map.of("by", callerId), 0.0);
 
-        g.cancelMatch();
-        save(g);
-
-        matchService.recordMove(matchId, MoveType.SYSTEM,
-                Map.of("by", callerId), 0.0);
-
-        return g;
+            return g;
+        } finally {
+            lock.unlock();
+        }
     }
 
+    // Callback target – invoked by BelotGame at the end of a hand
+    public void recordHandEnd(String gameId,
+                              int teamAHandPoints, int teamBHandPoints,
+                              int teamADeclPoints, int teamBDeclPoints,
+                              int teamATricksWon, int teamBTricksWon,
+                              boolean padanje, boolean capot) {
+
+        BelotGame game = getOrThrow(gameId); // to include current total scores
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("teamAHandPoints", teamAHandPoints);
+        payload.put("teamBHandPoints", teamBHandPoints);
+        payload.put("teamADeclPoints", teamADeclPoints);
+        payload.put("teamBDeclPoints", teamBDeclPoints);
+        payload.put("teamATricksWon", teamATricksWon);
+        payload.put("teamBTricksWon", teamBTricksWon);
+        payload.put("padanje", padanje);
+        payload.put("capot", capot);
+        payload.put("finalScoreA", game.getTeamAScore());
+        payload.put("finalScoreB", game.getTeamBScore());
+
+        matchService.recordMove(gameId, MoveType.END_HAND, payload, 0.0);
+    }
 }

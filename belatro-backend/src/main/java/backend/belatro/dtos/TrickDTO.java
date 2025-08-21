@@ -1,10 +1,17 @@
 package backend.belatro.dtos;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
- * One trick inside a hand – just its order number and the plays.
+ * One trick inside a hand – order number, plays, winner, points and optional last trick bonus.
  */
 
-public record TrickDTO(int trickNo,
-                       List<MoveDTO> moves) {}
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public record TrickDTO(
+        int trickNo,
+        String winnerId,
+        Integer points,
+        List<MoveDTO> moves,
+        Boolean lastTrickBonus
+) {}
