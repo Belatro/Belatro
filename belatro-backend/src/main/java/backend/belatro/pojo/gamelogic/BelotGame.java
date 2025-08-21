@@ -1,10 +1,12 @@
 package backend.belatro.pojo.gamelogic;
 
+import backend.belatro.callbacks.HandCompletionCallback;
 import backend.belatro.pojo.gamelogic.enums.Boja;
 import backend.belatro.pojo.gamelogic.enums.GameState;
 import backend.belatro.pojo.gamelogic.enums.Rank;
 import com.fasterxml.jackson.annotation.*;
 import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,6 +27,10 @@ public class BelotGame {
 
     @Getter
     private final Team teamA;
+
+    @Setter
+    @JsonIgnore
+    private HandCompletionCallback handCompletionCallback;
 
     @Getter
     private final Team teamB;
@@ -69,7 +75,9 @@ public class BelotGame {
     @Getter
     private final List<Bid> bids = new ArrayList<>();
 
+    @Getter
     @JsonProperty private int teamADeclPoints = 0;
+    @Getter
     @JsonProperty private int teamBDeclPoints = 0;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BelotGame.class);
@@ -860,7 +868,21 @@ public class BelotGame {
                 teamBHandPoints = 0;
             }
 
+            int finalTeamAHandPoints = teamAHandPoints;
+            int finalTeamBHandPoints = teamBHandPoints;
+            int finalTeamATricksWon  = teamATricksWon;
+            int finalTeamBTricksWon  = teamBTricksWon;
+            int finalTeamADeclPoints = teamADeclPoints;
+            int finalTeamBDeclPoints = teamBDeclPoints;
+
+            boolean callerIsA  = teamA.getPlayers().stream().anyMatch(p -> p.getId().equals(trumpCaller.getId()));
+            int callerPts      = callerIsA ? finalTeamAHandPoints : finalTeamBHandPoints;
+            int opponentPts    = callerIsA ? finalTeamBHandPoints : finalTeamAHandPoints;
+            boolean padanje    = (callerPts <= opponentPts);
+
             applyPadanjeAndUpdateScores();
+
+            boolean capot = (finalTeamATricksWon == 8 || finalTeamBTricksWon == 8);
 
             // capot bonus
             if (teamATricksWon == 8) {
@@ -869,6 +891,16 @@ public class BelotGame {
             } else if (teamBTricksWon == 8) {
                 teamB.addPoints(90);
                 LOGGER.info("Capot! Team B +90");
+            }
+
+            if (handCompletionCallback != null) {
+                handCompletionCallback.onHandCompleted(
+                        gameId,
+                        finalTeamAHandPoints, finalTeamBHandPoints,
+                        finalTeamADeclPoints, finalTeamBDeclPoints,
+                        finalTeamATricksWon,  finalTeamBTricksWon,
+                        padanje, capot
+                );
             }
 
             // match finished?
@@ -1001,6 +1033,7 @@ public class BelotGame {
         int declPts = (challengerTeam == teamA) ? teamADeclPoints : teamBDeclPoints;
         int total   = FULL_HAND_POINTS + declPts;
 
+        assert challengerTeam != null;
         challengerTeam.addPoints(total);
         LOGGER.info("Challenge SUCCESS – {} pts (162+decl) awarded to {}",
                 total, challengerTeam == teamA ? "Team A" : "Team B");
@@ -1097,6 +1130,7 @@ public class BelotGame {
 
         return hasBela || sequencePoints.isPresent();
     }
+
 
     /** Move the dealer one seat clockwise and rotate turnOrder accordingly. */
     private void selectNextDealer() {

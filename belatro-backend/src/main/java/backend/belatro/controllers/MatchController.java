@@ -5,6 +5,7 @@ import backend.belatro.dtos.MatchDTO;
 import backend.belatro.dtos.MoveDTO;
 import backend.belatro.services.IMatchService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,7 +24,9 @@ public class MatchController {
     @PostMapping
     public ResponseEntity<MatchDTO> createMatch(@RequestBody MatchDTO matchDTO) {
         MatchDTO createdMatch = matchService.createMatch(matchDTO);
-        return new ResponseEntity<>(createdMatch, HttpStatus.CREATED);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(createdMatch);
     }
 
     @GetMapping("/{id}")

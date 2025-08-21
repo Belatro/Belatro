@@ -28,10 +28,7 @@ import org.springframework.web.socket.server.HandshakeInterceptor;
 import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
 
 import java.security.Principal;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 @Configuration
 @EnableWebSocketMessageBroker
@@ -117,7 +114,7 @@ public class WsConfig implements WebSocketMessageBrokerConfigurer {
                 if (StompCommand.CONNECT.equals(accessor.getCommand())) {
                     /* 1) First try to re-use what the handshake stored */
                     if (accessor.getUser() == null) {
-                        Object authAttr = accessor.getSessionAttributes()
+                        Object authAttr = Objects.requireNonNull(accessor.getSessionAttributes())
                                 .get("SPRING.AUTHENTICATION");
                         if (authAttr instanceof Authentication auth) {
                             accessor.setUser(auth);
