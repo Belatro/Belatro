@@ -1,7 +1,6 @@
 package backend.belatro.controllers;
 
 import backend.belatro.dtos.*;
-import backend.belatro.enums.MoveType;
 import backend.belatro.events.GameStartedEvent;
 import backend.belatro.events.GameStateChangedEvent;
 import backend.belatro.events.TurnStartedEvent;
@@ -19,7 +18,6 @@ import org.springframework.messaging.simp.annotation.SubscribeMapping;
 import org.springframework.stereotype.Controller;
 
 import java.security.Principal;
-import java.util.Map;
 import java.util.stream.Stream;
 
 @Controller
@@ -76,12 +74,6 @@ public class GameSocketController {
 
         BelotGame game = svc.playCard(id, msg.playerId(), msg.card(), msg.declareBela());
         svc.save(game);
-        matchService.recordMove(id,
-                MoveType.PLAY_CARD,
-                Map.of("playerId", msg.playerId(),
-                        "card",     cardToString(msg.card()),
-                        "declareBela", msg.declareBela()),
-                0.0);
 
         fanOutGameState(game);
     }
@@ -95,14 +87,7 @@ public class GameSocketController {
 
         BelotGame game = svc.placeBid(id, bid);
         svc.save(game);
-        Map<String,Object> payload = msg.pass()
-                ? Map.of("playerId", msg.playerId(),
-                "pass",     true)
-                : Map.of("playerId", msg.playerId(),
-                "pass",     false,
-                "trump",    msg.trump());
 
-        matchService.recordMove(id, MoveType.BID, payload, 0.0);
 
         fanOutGameState(game);
     }
@@ -111,13 +96,6 @@ public class GameSocketController {
 
         BelotGameService.ChallengeOutcome res = svc.challengeHand(id, msg.playerId());
 
-        // write the move with the extra field
-        matchService.recordMove(
-                id,
-                MoveType.CHALLENGE,
-                Map.of("playerId", msg.playerId(),
-                        "success",  res.success()),
-                0.0);
 
         fanOutGameState(res.game());
     }

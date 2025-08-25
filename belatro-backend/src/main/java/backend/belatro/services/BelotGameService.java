@@ -82,13 +82,17 @@ public class BelotGameService {
             boolean ok = g.challengeHand(playerId);
             save(g);
 
+            boolean challengerIsA =
+                    g.getTeamA().getPlayers().stream().anyMatch(p -> p.getId().equals(playerId));
+            String violatingTeam = challengerIsA ? "B" : "A";
             // record challenge attempt/result
             matchService.recordMove(
                     gameId,
                     MoveType.CHALLENGE,
                     Map.of(
                             "playerId", playerId,
-                            "success", ok
+                            "success", ok,
+                            "violatingTeam", violatingTeam
                     ),
                     0.0
             );
@@ -114,11 +118,10 @@ public class BelotGameService {
         try {
             BelotGame game = getOrThrow(gameId);
             Player p = game.findPlayerById(playerId);
-
-            boolean isTurn =
-                    (game.getGameState() == GameState.BIDDING && p.getId().equals(game.getCurrentLead().getId()))
-                            || (game.getGameState() == GameState.PLAYING && game.getCurrentPlayer() != null
-                            && p.getId().equals(game.getCurrentPlayer().getId()));
+            boolean isLegal = game.isValidPlay(p, card);
+            boolean isTurn = (game.getGameState() == GameState.PLAYING)
+                                       && game.getCurrentPlayer() != null
+                                       && p.getId().equals(game.getCurrentPlayer().getId());
 
             if (!isTurn) {
                 LOGGER.warn("Rejected out-of-turn play by {}", playerId);
@@ -146,6 +149,7 @@ public class BelotGameService {
             payload.put("playerId", playerId);
             payload.put("card", card.toString());
             payload.put("declareBela", declareBela);
+            payload.put("legal", isLegal);
             matchService.recordMove(gameId, MoveType.PLAY_CARD, payload, 0.0);
 
             // If trick completed, record END_TRICK with winner and points
@@ -395,6 +399,8 @@ public class BelotGameService {
 
         BelotGame game = getOrThrow(gameId); // to include current total scores
 
+        int finalScoreA = game.getTeamAScore();
+        int finalScoreB = game.getTeamBScore();
         Map<String, Object> payload = new HashMap<>();
         payload.put("teamAHandPoints", teamAHandPoints);
         payload.put("teamBHandPoints", teamBHandPoints);
@@ -406,6 +412,8 @@ public class BelotGameService {
         payload.put("capot", capot);
         payload.put("finalScoreA", game.getTeamAScore());
         payload.put("finalScoreB", game.getTeamBScore());
+        payload.put("finalTeamAScore", finalScoreA);
+        payload.put("finalTeamBScore", finalScoreB);
 
         matchService.recordMove(gameId, MoveType.END_HAND, payload, 0.0);
     }

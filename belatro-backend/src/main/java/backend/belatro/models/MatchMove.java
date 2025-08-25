@@ -26,6 +26,6 @@ public class MatchMove {
     private Map<String, Object> payload;
     private double  evaluation;
     private Instant ts;
-
+    private Boolean legal;
 
 }

@@ -97,21 +97,51 @@ public class MatchServiceImpl implements IMatchService {
                            Map<String, Object> payload,
                            double evaluation) {
 
-        long totalCardPlays = calculateTotalCardPlays(matchId, moveType);
+        int lastEndNo = matchMoveRepo
+                .findFirstByMatchIdAndTypeOrderByNumberDesc(matchId, MoveType.END_HAND)
+                .map(MatchMove::getNumber)
+                .orElse(0);
 
-        // Only calculate hand/trick numbers for PLAY_CARD moves
-        int handNo = 1;
-        int trickNo = 1;
+        long handsFinished = matchMoveRepo.countByMatchIdAndType(matchId, MoveType.END_HAND);
+        int handNo = (int) handsFinished + 1;
 
-        if (moveType == MoveType.PLAY_CARD) {
-            handNo = calculateHandNumber(totalCardPlays);
-            trickNo = calculateTrickNumber(totalCardPlays);
-        } else {
-            Optional<MatchMove> lastCardMove = matchMoveRepo.findFirstByMatchIdAndTypeOrderByNumberDesc(matchId, MoveType.PLAY_CARD);
-            if (lastCardMove.isPresent()) {
-                handNo = lastCardMove.get().getHandNo();
+        long playsSinceBoundary = matchMoveRepo
+                .countByMatchIdAndTypeAndNumberGreaterThan(matchId, MoveType.PLAY_CARD, lastEndNo);
+
+        int trickNo;
+        switch (moveType) {
+            case PLAY_CARD -> {
+                long afterThis = playsSinceBoundary + 1;
+                trickNo = (int) ((afterThis - 1) / PLAYS_PER_TRICK) + 1;
+            }
+            case END_TRICK -> {
+                trickNo = (int) Math.max(1, (playsSinceBoundary / PLAYS_PER_TRICK));
+            }
+            case END_HAND -> {
+                trickNo = (playsSinceBoundary == 0)
+                        ? 0
+                        : (int) (((playsSinceBoundary - 1) / PLAYS_PER_TRICK) + 1);
+            }
+            default -> {
+                trickNo = (int) ((playsSinceBoundary) / PLAYS_PER_TRICK) + 1;
             }
         }
+        if (moveType == MoveType.CHALLENGE
+                && Boolean.TRUE.equals(payload.get("success"))
+                && handsFinished > 0) {
+            handNo = (int) handsFinished;
+        }
+
+        if (moveType == MoveType.PLAY_CARD) {
+            var last = matchMoveRepo.findFirstByMatchIdAndTypeOrderByNumberDesc(matchId, MoveType.PLAY_CARD);
+            if (last.isPresent()
+                    && last.get().getType() == MoveType.PLAY_CARD
+                    && Objects.equals(last.get().getPayload().get("playerId"), payload.get("playerId"))
+                    && Objects.equals(last.get().getPayload().get("card"),     payload.get("card"))) {
+                return; // skip duplicate
+            }
+        }
+
 
         MatchMove move = new MatchMove();
         move.setMatchId(matchId);
@@ -123,8 +153,11 @@ public class MatchServiceImpl implements IMatchService {
         move.setTrickNo(trickNo);
         move.setTs(Instant.now());
 
+
         matchMoveRepo.save(move);
     }
+
+
 
     private long calculateTotalCardPlays(String matchId, MoveType moveType) {
         long existingCardPlays = matchMoveRepo.countByMatchIdAndType(matchId, MoveType.PLAY_CARD);
@@ -147,29 +180,46 @@ public class MatchServiceImpl implements IMatchService {
 
 
 
-    // Java
     @Override
     public List<HandDTO> getStructuredMoves(String matchId) {
         List<MatchMove> moves = matchMoveRepo.findByMatchIdOrderByNumber(matchId);
 
+        var matchOpt = matchRepo.findById(matchId);
+        final java.util.Set<String> teamAIds = matchOpt
+                .map(m -> m.getTeamA().stream().map(User::getId).collect(java.util.stream.Collectors.toSet()))
+                .orElse(java.util.Set.of());
+        final java.util.Set<String> teamBIds = matchOpt
+                .map(m -> m.getTeamB().stream().map(User::getId).collect(java.util.stream.Collectors.toSet()))
+                .orElse(java.util.Set.of());
         record InProgress(List<MoveDTO> moves, int trickNo, String winnerId, Integer points) {}
 
+        Map<Integer, String> violatingTeamByHand = new HashMap<>();
+        for (MatchMove mv : moves) {
+            if (mv.getType() == MoveType.CHALLENGE
+                    && Boolean.TRUE.equals(mv.getPayload().get("success"))) {
+                Object vt = mv.getPayload().get("violatingTeam"); // "A" or "B"
+                if (vt instanceof String s) {
+                    violatingTeamByHand.put(mv.getHandNo(), s);
+                }
+            }
+        }
         Map<Integer, List<TrumpCallDTO>> trumpByHand   = new LinkedHashMap<>();
         Map<Integer, List<TrickDTO>>     tricksByHand  = new LinkedHashMap<>();
         Map<Integer, List<ChallengeDTO>> challByHand   = new LinkedHashMap<>();
         Map<Integer, HandSummaryDTO>     summaryByHand = new LinkedHashMap<>();
         Map<Integer, InProgress>         currentTricks = new HashMap<>();
-        // NEW: track whether a trump was already set this hand
         Map<Integer, Boolean>            trumpSeen     = new HashMap<>();
-        // Deduplication set per hand for the current trick (playerId|card)
         Map<Integer, java.util.Set<String>> seenKeysByHand = new HashMap<>();
-        // Enforce at most one play per player within the same trick
         Map<Integer, java.util.Set<String>> seenPlayersByHand = new HashMap<>();
-        // Deduplicate PASS bids per player per hand until trump is chosen
         Map<Integer, java.util.Set<String>> passedPlayersByHand = new HashMap<>();
 
+        Map<Integer, List<MoveDTO>> preTrumpBufferByHand = new HashMap<>();
+
+        Map<Integer, Boolean> handClosedByChallenge = new HashMap<>();
+        Map<Integer, List<MoveDTO>> spillToNextHand = new HashMap<>();
+
+
         int handIdx = 1;
-        int cardsInHand = 0;
 
         BiConsumer<Integer, InProgress> flush = (h, ip) -> {
             if (ip == null || ip.moves().isEmpty()) return;
@@ -187,15 +237,22 @@ public class MatchServiceImpl implements IMatchService {
         };
 
         for (MatchMove mv : moves) {
-            if (mv.getType() == MoveType.BID && cardsInHand == PLAYS_PER_HAND) {
-                flush.accept(handIdx, currentTricks.get(handIdx));
-                handIdx++;
-                cardsInHand = 0;
+            // Use the move's actual handNo to ensure correct hand placement
+            int h = mv.getHandNo();
+            
+            // Keep track of the highest hand number seen for final cleanup
+            if (h > handIdx) {
+                handIdx = h;
             }
+            preTrumpBufferByHand.computeIfAbsent(h, k -> new ArrayList<>());
 
-
-            int h = handIdx;
-
+            if (h > 1) {
+                List<MoveDTO> spill = spillToNextHand.getOrDefault(h - 1, List.of());
+                if (!spill.isEmpty()) {
+                    preTrumpBufferByHand.computeIfAbsent(h, k -> new ArrayList<>()).addAll(spill);
+                    spillToNextHand.put(h - 1, new ArrayList<>()); // clear
+                }
+            }
             currentTricks.computeIfAbsent(h, k -> new InProgress(new ArrayList<>(), 1, null, null));
             tricksByHand .computeIfAbsent(h, k -> new ArrayList<>());
             challByHand  .computeIfAbsent(h, k -> new ArrayList<>());
@@ -236,30 +293,77 @@ public class MatchServiceImpl implements IMatchService {
                                 trumpVal
                         ));
                         trumpSeen.put(h, Boolean.TRUE);
+
+                        // ⬇️ Drain any pre-trump buffered plays now, with de-dupe + flush
+                        var buf = preTrumpBufferByHand.get(h);
+                        if (buf != null && !buf.isEmpty()) {
+                            var seenKeys = seenKeysByHand.get(h);
+                            var seenPlayers = seenPlayersByHand.get(h);
+                            for (MoveDTO m : buf) {
+                                String key = m.player() + "|" + m.card();
+                                if (!seenPlayers.contains(m.player()) && !seenKeys.contains(key)) {
+                                    seenPlayers.add(m.player());
+                                    seenKeys.add(key);
+                                    ip.moves().add(m);
+                                    if (ip.moves().size() >= PLAYS_PER_TRICK) {
+                                        flush.accept(h, ip);
+                                        // refresh after flush
+                                        ip = currentTricks.get(h);
+                                        seenKeys = seenKeysByHand.get(h);
+                                        seenPlayers = seenPlayersByHand.get(h);
+                                    }
+                                }
+                            }
+                            buf.clear();
+                        }
                     }
                 }
 
                 case PLAY_CARD -> {
                     String pid  = (String) mv.getPayload().get("playerId");
                     String card = (String) mv.getPayload().get("card");
-                    java.util.Set<String> seenKeys = seenKeysByHand.get(h);
-                    java.util.Set<String> seenPlayers = seenPlayersByHand.get(h);
+                    Boolean legal = (Boolean) mv.getPayload().getOrDefault("legal", Boolean.TRUE);
+
+
+                    // 1) If previous hand ended with 3 cards in the last trick, use THIS card to complete it (fixes "last card sent down")
+                    if (h > 1 && !Boolean.TRUE.equals(trumpSeen.get(h))) {
+                        List<TrickDTO> prevTricks = tricksByHand.get(h - 1);
+                        if (prevTricks != null && !prevTricks.isEmpty()) {
+                            TrickDTO lastPrev = prevTricks.get(prevTricks.size() - 1);
+                            if (lastPrev.moves().size() == 3) {
+                                List<MoveDTO> merged = new ArrayList<>(lastPrev.moves());
+                                merged.add(new MoveDTO(mv.getNumber(), pid, legal, card));
+                                // replace last trick with a 4-card version (winner/points may be backfilled by END_TRICK later)
+                                prevTricks.set(prevTricks.size() - 1, new TrickDTO(
+                                        lastPrev.trickNo(), lastPrev.winnerId(), lastPrev.points(), List.copyOf(merged), lastPrev.lastTrickBonus()
+                                ));
+                                break; // consumed into previous hand; don't add to current
+                            }
+                        }
+                    }
+
+
+
+                    // 3) If trump not chosen yet, buffer until BID (non-PASS) arrives
+                    if (!Boolean.TRUE.equals(trumpSeen.get(h))) {
+                        preTrumpBufferByHand.get(h).add(new MoveDTO(mv.getNumber(), pid, legal, card));
+                        break;
+                    }
+
+                    // Normal path (trump chosen): de-dupe within trick and flush on 4+
+                    var seenKeys = seenKeysByHand.get(h);
+                    var seenPlayers = seenPlayersByHand.get(h);
                     String key = pid + "|" + card;
                     if (!seenPlayers.contains(pid) && !seenKeys.contains(key)) {
                         seenPlayers.add(pid);
                         seenKeys.add(key);
-                        ip.moves().add(new MoveDTO(
-                                mv.getNumber(),
-                                pid,
-                                card
-                        ));
-                        cardsInHand++;
-                        // Auto-flush after 4 unique plays even if END_TRICK is missing
-                        if (ip.moves().size() == PLAYS_PER_TRICK) {
+                        ip.moves().add(new MoveDTO(mv.getNumber(), pid, legal, card));
+                        if (ip.moves().size() >= PLAYS_PER_TRICK) {
                             flush.accept(h, ip);
                         }
                     }
                 }
+
 
                 case END_TRICK -> {
                     String winnerId = (String) mv.getPayload().get("winnerId");
@@ -284,7 +388,7 @@ public class MatchServiceImpl implements IMatchService {
                         InProgress withMeta = new InProgress(ip.moves(), ip.trickNo(), winnerId, points);
                         currentTricks.put(h, withMeta);
                         // Only flush if we already have 4 plays; otherwise keep meta for when the 4th play arrives
-                        if (withMeta.moves().size() == PLAYS_PER_TRICK) {
+                        if (withMeta.moves().size() >= PLAYS_PER_TRICK) {
                             flush.accept(h, withMeta);
                         }
                     }
@@ -293,13 +397,21 @@ public class MatchServiceImpl implements IMatchService {
                 case CHALLENGE -> {
                     boolean success = Boolean.TRUE.equals(mv.getPayload().get("success"));
                     String  pid     = (String) mv.getPayload().get("playerId");
+
                     challByHand.get(h).add(new ChallengeDTO(mv.getNumber(), pid, success));
+
                     if (success) {
+                        // close any partial trick in this hand
                         flush.accept(h, ip);
-                        handIdx++;
-                        cardsInHand = 0;
+
+                        // hard stop: no further cards belong to this hand
+                        handClosedByChallenge.put(h, true);
+
+
                     }
                 }
+
+
 
                 case END_HAND -> {
                     HandSummaryDTO summary = new HandSummaryDTO(
@@ -315,8 +427,33 @@ public class MatchServiceImpl implements IMatchService {
                             (Integer) mv.getPayload().get("finalScoreB")
                     );
                     summaryByHand.put(h, summary);
-                    // Reset for next hand
-                    trumpSeen.put(h, Boolean.FALSE);
+                    // Finish current hand: flush any in-progress trick
+                    InProgress curr = currentTricks.get(h);
+                    if (curr != null && !curr.moves().isEmpty()) {
+                        if (curr.moves().size() >= PLAYS_PER_TRICK) {
+                            flush.accept(h, curr);
+                        } else {
+                            // partial trick at hand end: emit without meta
+                            tricksByHand.get(h).add(new TrickDTO(
+                                    curr.trickNo(),
+                                    null,
+                                    null,
+                                    List.copyOf(curr.moves()),
+                                    Boolean.FALSE
+                            ));
+                            currentTricks.put(h, new InProgress(new ArrayList<>(), curr.trickNo() + 1, null, null));
+                        }
+                    }
+                    var buf = preTrumpBufferByHand.get(h);
+                    if (buf != null && !buf.isEmpty()) {
+                        tricksByHand.get(h).add(new TrickDTO(
+                                currentTricks.get(h).trickNo(),
+                                null, null,
+                                List.copyOf(buf),
+                                Boolean.FALSE
+                        ));
+                        buf.clear();
+                    }
                 }
 
                 default -> { /* ignore */ }
@@ -326,7 +463,7 @@ public class MatchServiceImpl implements IMatchService {
         // Flush only the current hand tail
         InProgress tail = currentTricks.get(handIdx);
         if (tail != null && !tail.moves().isEmpty()) {
-            if (tail.moves().size() == PLAYS_PER_TRICK) {
+            if (tail.moves().size() >= PLAYS_PER_TRICK) {
                 // normal complete trick
                 flush.accept(handIdx, tail);
             } else {
@@ -557,6 +694,7 @@ public class MatchServiceImpl implements IMatchService {
         return new MoveDTO(
                 mm.getNumber(),
                 (String) mm.getPayload().get("playerId"),
+                (Boolean) mm.getPayload().getOrDefault("legal", Boolean.TRUE),
                 (String) mm.getPayload().get("card")
         );
     }

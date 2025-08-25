@@ -13,14 +13,11 @@ public interface MatchMoveRepo extends MongoRepository<MatchMove, String> {
 
     List<MatchMove> findByMatchIdOrderByNumber(String matchId);
 
-    long countByMatchId(String matchId);
-    void deleteByMatchId(String matchId);
+    long countByMatchIdAndType(String matchId, MoveType type);
+    long countByMatchIdAndTypeAndNumberGreaterThan(String matchId, MoveType type, int number);
 
-    long countByMatchIdAndType(String matchId, MoveType moveType);
 
-    List<MatchMove> findByMatchIdAndTypeOrderByNumberDesc(String matchId, MoveType moveType);
 
     Optional<MatchMove> findFirstByMatchIdAndTypeOrderByNumberDesc(String matchId, MoveType moveType);
 
-    Optional<MatchMove> findFirstByMatchIdOrderByNumberDesc(String matchId);
 }
