@@ -1037,6 +1037,24 @@ public class BelotGame {
         challengerTeam.addPoints(total);
         LOGGER.info("Challenge SUCCESS – {} pts (162+decl) awarded to {}",
                 total, challengerTeam == teamA ? "Team A" : "Team B");
+
+        if (handCompletionCallback != null) {
+            // Hand summary: challenger gets 162 hand points; declarations are passed separately.
+            int sumAHand = (challengerTeam == teamA) ? FULL_HAND_POINTS : 0;
+            int sumBHand = (challengerTeam == teamB) ? FULL_HAND_POINTS : 0;
+
+            boolean padanje = true;      // challenge = opponents fouled → hand awarded
+            boolean capot   = false;     // not a capot scenario
+
+            handCompletionCallback.onHandCompleted(
+                    gameId,
+                    sumAHand, sumBHand,
+                    teamADeclPoints, teamBDeclPoints,
+                    teamATricksWon,  teamBTricksWon,
+                    padanje, capot
+            );
+        }
+
         checkMatchEnd();           // NEW
         if (gameState == GameState.COMPLETED) return true;
 
