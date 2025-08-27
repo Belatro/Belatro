@@ -22,5 +22,6 @@ public record PublicGameView(
         String    winnerTeamId,     // null while running
         boolean   tieBreaker  ,
         @JsonProperty("seatingOrder")
-        List<PlayerPublicInfo> seatingOrder// true when both ≥ target AND scores equal
-) {}
+        List<PlayerPublicInfo> seatingOrder,// true when both ≥ target AND scores equal
+        Map<String, DeclarationsDTO> declarations,
+        Map<String, Boolean> belaDeclaredByPlayer) {}
