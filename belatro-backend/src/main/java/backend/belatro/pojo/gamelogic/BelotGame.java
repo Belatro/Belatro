@@ -1232,6 +1232,9 @@ public class BelotGame {
         LOGGER.info("{}  |  Turn order: {}", msg, order);
     }
 
+    public boolean hasBelaDeclared(String playerId) {
+        return belaAlreadyDeclared.getOrDefault(playerId, false);
+    }
     /** INFO-level snapshot of hand points and running scores. */
     private void logScores(String msg) {
         LOGGER.info("{}  |  HandPts A:{}  B:{}   Total A:{}  B:{}",

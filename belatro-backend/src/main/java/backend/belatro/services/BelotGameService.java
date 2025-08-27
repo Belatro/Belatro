@@ -12,7 +12,9 @@ import backend.belatro.events.GameStateChangedEvent;
 import backend.belatro.events.TurnStartedEvent;
 import backend.belatro.models.User;
 import backend.belatro.pojo.gamelogic.*;
+import backend.belatro.pojo.gamelogic.enums.Boja;
 import backend.belatro.pojo.gamelogic.enums.GameState;
+import backend.belatro.pojo.gamelogic.enums.Rank;
 import backend.belatro.repos.UserRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,7 +39,6 @@ public class BelotGameService {
     private final ApplicationEventPublisher eventPublisher;
     private final UserRepo userRepository;
     private final IMatchService matchService;
-    // Per-game serialization to prevent concurrent duplicate recording
     private static final java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.locks.ReentrantLock> GAME_LOCKS = new java.util.concurrent.ConcurrentHashMap<>();
     private static java.util.concurrent.locks.ReentrantLock lockFor(String gameId) {
         return GAME_LOCKS.computeIfAbsent(gameId, id -> new java.util.concurrent.locks.ReentrantLock());
@@ -56,10 +57,9 @@ public class BelotGameService {
 
     public BelotGame start(String gameId, Team teamA, Team teamB) {
         BelotGame game = new BelotGame(gameId, teamA, teamB);
-        // attach service callback for end-of-hand summary recording
         game.setHandCompletionCallback(this::recordHandEnd);
 
-        game.startGame(); // Deals cards, sets bidding phase, etc.
+        game.startGame();
         save(game);
 
         eventPublisher.publishEvent(new TurnStartedEvent(
@@ -85,7 +85,6 @@ public class BelotGameService {
             boolean challengerIsA =
                     g.getTeamA().getPlayers().stream().anyMatch(p -> p.getId().equals(playerId));
             String violatingTeam = challengerIsA ? "B" : "A";
-            // record challenge attempt/result
             matchService.recordMove(
                     gameId,
                     MoveType.CHALLENGE,
@@ -320,6 +319,15 @@ public class BelotGameService {
                 })
                 .toList();
 
+        Map<String, backend.belatro.dtos.DeclarationsDTO> declarations =
+                g.getPlayers().stream().collect(Collectors.toMap(
+                        Player::getId,
+                        pl -> buildDeclarations(pl, g.getTrump())
+                ));
+
+        Map<String, Boolean> belaDeclaredByPlayer = g.getPlayers().stream()
+                .collect(Collectors.toMap(Player::getId, pl -> g.hasBelaDeclared(pl.getId())));
+
         Trick trickForDisplay = getTrickForDisplay(g);
 
         return new PublicGameView(
@@ -334,7 +342,9 @@ public class BelotGameService {
                 challenged,
                 winner,
                 tieBrk,
-                seatingOrder
+                seatingOrder,
+                declarations,
+                belaDeclaredByPlayer
         );
     }
 
@@ -361,15 +371,25 @@ public class BelotGameService {
                         && g.getCurrentPlayer().getId().equals(p.getId());
         boolean challengeUsed = g.hasPlayerChallenged(p);
 
-        List<Card> sortedHand = new ArrayList<>(p.getHand());
-        sortedHand.sort(BelotRankComparator.getSequenceComparator());
+        List<Boja> suitOrder = new ArrayList<>(EnumSet.allOf(Boja.class));
+        int seed = p.getHand().stream()
+                .mapToInt(c -> (c.getBoja().ordinal() << 4) | c.getRank().ordinal())
+                .reduce(17, (a, b) -> 31 * a + b);
+        Collections.shuffle(suitOrder, new Random(seed));
 
-        return new PrivateGameView(
-                toPublicView(g),
-                sortedHand,
-                yourTurn,
-                challengeUsed
-        );
+        Map<Boja, Integer> suitIdx = new EnumMap<>(Boja.class);
+        for (int i = 0; i < suitOrder.size(); i++) suitIdx.put(suitOrder.get(i), i);
+
+        Map<Rank,Integer> SEQ = BelotRankComparator.getSequenceRankOrder();
+
+        Comparator<Card> suitThenSeq =
+                Comparator.comparingInt((Card c) -> suitIdx.get(c.getBoja()))
+                        .thenComparingInt((Card c) -> SEQ.getOrDefault(c.getRank(), -1));
+
+        List<Card> sortedHand = new ArrayList<>(p.getHand());
+        sortedHand.sort(suitThenSeq);
+
+        return new PrivateGameView(toPublicView(g), sortedHand, yourTurn, challengeUsed);
     }
 
     public record ChallengeOutcome(BelotGame game, boolean success) {}
@@ -388,6 +408,14 @@ public class BelotGameService {
         } finally {
             lock.unlock();
         }
+    }
+
+    private static backend.belatro.dtos.DeclarationsDTO buildDeclarations(Player pl, Boja trump) {
+        boolean bela = (trump != null) && ZvanjaValidator.isBela(pl.getHand(), trump);
+        var seqs = ZvanjaValidator.evaluateAllSequences(pl.getHand());
+        int bestSeq = seqs.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+        int four = ZvanjaValidator.evaluateFourOfAKind(pl.getHand()).orElse(0);
+        return new backend.belatro.dtos.DeclarationsDTO(bela, seqs, four, bestSeq);
     }
 
     // Callback target – invoked by BelotGame at the end of a hand
