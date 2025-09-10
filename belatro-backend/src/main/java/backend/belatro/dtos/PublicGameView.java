@@ -24,4 +24,7 @@ public record PublicGameView(
         @JsonProperty("seatingOrder")
         List<PlayerPublicInfo> seatingOrder,// true when both ≥ target AND scores equal
         Map<String, DeclarationsDTO> declarations,
-        Map<String, Boolean> belaDeclaredByPlayer) {}
+        Map<String, Boolean> belaDeclaredByPlayer,
+        Long challengeWindowExpiresAt
+)
+{}

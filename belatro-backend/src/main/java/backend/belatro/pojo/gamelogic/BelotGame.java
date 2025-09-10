@@ -31,7 +31,18 @@ public class BelotGame {
     @Setter
     @JsonIgnore
     private HandCompletionCallback handCompletionCallback;
+    @JsonIgnore
+    @Getter @Setter
+    private boolean postHandPauseEnabled = true;
 
+    @Setter
+    @Getter
+    @JsonProperty
+    private Long challengeWindowExpiresAt = null;
+
+    @JsonProperty private int  lastHandAwardTeamADelta = 0;
+    @JsonProperty private int  lastHandAwardTeamBDelta = 0;
+    @JsonProperty private boolean lastHandScoringCommitted = false;
     @Getter
     private final Team teamB;
 
@@ -857,16 +868,9 @@ public class BelotGame {
 
         /* --- 2. hand finished? ---------------------------------------------- */
         if (isLastTrick) {
-            LOGGER.info("Hand totals before padanje – A:{}  B:{}",
-                    teamAHandPoints, teamBHandPoints);
-            if (teamATricksWon == 0 && teamAHandPoints > 0) {
-                LOGGER.info("Team A had declarations but won no tricks; clearing their hand points");
-                teamAHandPoints = 0;
-            }
-            if (teamBTricksWon == 0 && teamBHandPoints > 0) {
-                LOGGER.info("Team B had declarations but won no tricks; clearing their hand points");
-                teamBHandPoints = 0;
-            }
+            LOGGER.info("Hand totals before padanje – A:{}  B:{}", teamAHandPoints, teamBHandPoints);
+            if (teamATricksWon == 0 && teamAHandPoints > 0) teamAHandPoints = 0;
+            if (teamBTricksWon == 0 && teamBHandPoints > 0) teamBHandPoints = 0;
 
             int finalTeamAHandPoints = teamAHandPoints;
             int finalTeamBHandPoints = teamBHandPoints;
@@ -875,16 +879,17 @@ public class BelotGame {
             int finalTeamADeclPoints = teamADeclPoints;
             int finalTeamBDeclPoints = teamBDeclPoints;
 
-            boolean callerIsA  = teamA.getPlayers().stream().anyMatch(p -> p.getId().equals(trumpCaller.getId()));
-            int callerPts      = callerIsA ? finalTeamAHandPoints : finalTeamBHandPoints;
-            int opponentPts    = callerIsA ? finalTeamBHandPoints : finalTeamAHandPoints;
-            boolean padanje    = (callerPts <= opponentPts);
+            boolean callerIsA = teamA.getPlayers().stream().anyMatch(p -> p.getId().equals(trumpCaller.getId()));
+            int callerPts     = callerIsA ? finalTeamAHandPoints : finalTeamBHandPoints;
+            int opponentPts   = callerIsA ? finalTeamBHandPoints : finalTeamAHandPoints;
+            boolean padanje   = (callerPts <= opponentPts);
+
+            int beforeA = teamA.getScore();
+            int beforeB = teamB.getScore();
 
             applyPadanjeAndUpdateScores();
 
             boolean capot = (finalTeamATricksWon == 8 || finalTeamBTricksWon == 8);
-
-            // capot bonus
             if (teamATricksWon == 8) {
                 teamA.addPoints(90);
                 LOGGER.info("Capot! Team A +90");
@@ -893,22 +898,51 @@ public class BelotGame {
                 LOGGER.info("Capot! Team B +90");
             }
 
+            int afterA = teamA.getScore();
+            int afterB = teamB.getScore();
+            lastHandAwardTeamADelta   = afterA - beforeA;
+            lastHandAwardTeamBDelta   = afterB - beforeB;
+            lastHandScoringCommitted  = true;
+
+            checkMatchEnd();
+            if (gameState == GameState.COMPLETED) {
+                if (handCompletionCallback != null) {
+                    handCompletionCallback.onHandCompleted(
+                            this,
+                            finalTeamAHandPoints, finalTeamBHandPoints,
+                            finalTeamADeclPoints, finalTeamBDeclPoints,
+                            finalTeamATricksWon,  finalTeamBTricksWon,
+                            padanje, capot
+                    );
+                }
+                return;
+            }
+
+            if (postHandPauseEnabled) {
+                gameState = GameState.HAND_COMPLETE;
+                LOGGER.info("Hand finished -> entering HAND_COMPLETE for gameId={} (will open challenge window)", gameId);
+
+                if (handCompletionCallback != null) {
+                    handCompletionCallback.onHandCompleted(
+                            this,
+                            finalTeamAHandPoints, finalTeamBHandPoints,
+                            finalTeamADeclPoints, finalTeamBDeclPoints,
+                            finalTeamATricksWon,  finalTeamBTricksWon,
+                            padanje, capot
+                    );
+                }
+                return;
+            }
+
             if (handCompletionCallback != null) {
                 handCompletionCallback.onHandCompleted(
-                        gameId,
+                        this,
                         finalTeamAHandPoints, finalTeamBHandPoints,
                         finalTeamADeclPoints, finalTeamBDeclPoints,
                         finalTeamATricksWon,  finalTeamBTricksWon,
                         padanje, capot
                 );
             }
-
-            // match finished?
-
-            checkMatchEnd();
-            if (gameState == GameState.COMPLETED) return;
-
-            /* start next hand */
             resetHandState();
             resetBidding();
             startNextHand();
@@ -996,6 +1030,13 @@ public class BelotGame {
     }
 
 
+    public boolean startNextHandAfterWindow() {
+        if (gameState != GameState.HAND_COMPLETE) return false;
+        resetHandState();     // private, but we're inside the class
+        resetBidding();
+        startNextHand();
+        return true;
+    }
     /**
      * @return The number of completed tricks
      */
@@ -1009,6 +1050,18 @@ public class BelotGame {
      *         false – either player already used their challenge OR no infraction existed
      */
     public boolean challengeHand(String playerId) {
+        if (!(gameState == GameState.PLAYING || gameState == GameState.HAND_COMPLETE)) {
+            return false;
+        }
+
+        if (gameState == GameState.HAND_COMPLETE && lastHandScoringCommitted) {
+            teamA.addPoints(-lastHandAwardTeamADelta);
+            teamB.addPoints(-lastHandAwardTeamBDelta);
+            lastHandAwardTeamADelta  = 0;
+            lastHandAwardTeamBDelta  = 0;
+            lastHandScoringCommitted = false;
+        }
+
 
         Player challenger = findPlayerById(playerId);
         if (challengeUsed.getOrDefault(playerId, false)) return false;
@@ -1047,7 +1100,7 @@ public class BelotGame {
             boolean capot   = false;     // not a capot scenario
 
             handCompletionCallback.onHandCompleted(
-                    gameId,
+                    this,
                     sumAHand, sumBHand,
                     teamADeclPoints, teamBDeclPoints,
                     teamATricksWon,  teamBTricksWon,
@@ -1057,6 +1110,8 @@ public class BelotGame {
 
         checkMatchEnd();           // NEW
         if (gameState == GameState.COMPLETED) return true;
+
+
 
         resetHandState();
         resetBidding();
@@ -1257,5 +1312,6 @@ public class BelotGame {
     public void setLastActivity(Instant t) {
         this.lastActivity = t;
     }
+
 
 }

@@ -1,4 +1,3 @@
-// Java
 package backend.belatro.services;
 
 import backend.belatro.annotations.GameAction;
@@ -19,13 +18,17 @@ import backend.belatro.repos.UserRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,10 +38,20 @@ public class BelotGameService {
     private static final Logger LOGGER = LoggerFactory.getLogger(BelotGameService.class);
     private static final int TARGET_SCORE = 1001;
 
+    private static final long CHALLENGE_WINDOW_MS = 10_000L;
+
     private final RedisTemplate<String, BelotGame> redis;
     private final ApplicationEventPublisher eventPublisher;
     private final UserRepo userRepository;
     private final IMatchService matchService;
+    private final TaskScheduler scheduler;
+
+    private final Map<String, ScheduledFuture<?>> postHandTimers = new ConcurrentHashMap<>();
+    private final Map<String, Long> scheduledWindowExpiry = new ConcurrentHashMap<>();
+
+
+
+
     private static final java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.locks.ReentrantLock> GAME_LOCKS = new java.util.concurrent.ConcurrentHashMap<>();
     private static java.util.concurrent.locks.ReentrantLock lockFor(String gameId) {
         return GAME_LOCKS.computeIfAbsent(gameId, id -> new java.util.concurrent.locks.ReentrantLock());
@@ -48,11 +61,13 @@ public class BelotGameService {
     public BelotGameService(RedisTemplate<String, BelotGame> redis,
                             ApplicationEventPublisher eventPublisher,
                             UserRepo userRepository,
-                            IMatchService matchService) {
+                            IMatchService matchService,
+                            @Qualifier("gameScheduler") TaskScheduler scheduler) {
         this.redis = redis;
         this.eventPublisher = eventPublisher;
         this.userRepository = userRepository;
         this.matchService = matchService;
+        this.scheduler = scheduler;
     }
 
     public BelotGame start(String gameId, Team teamA, Team teamB) {
@@ -80,6 +95,14 @@ public class BelotGameService {
         try {
             BelotGame g = getOrThrow(gameId);
             boolean ok = g.challengeHand(playerId);
+
+            if (ok) {
+                cancelScheduledFutureOnly(gameId);
+                clearWindowExpiryIfMatches(gameId, scheduledWindowExpiry.get(gameId), "challenge_success");
+            }
+
+
+
             save(g);
 
             boolean challengerIsA =
@@ -119,8 +142,8 @@ public class BelotGameService {
             Player p = game.findPlayerById(playerId);
             boolean isLegal = game.isValidPlay(p, card);
             boolean isTurn = (game.getGameState() == GameState.PLAYING)
-                                       && game.getCurrentPlayer() != null
-                                       && p.getId().equals(game.getCurrentPlayer().getId());
+                    && game.getCurrentPlayer() != null
+                    && p.getId().equals(game.getCurrentPlayer().getId());
 
             if (!isTurn) {
                 LOGGER.warn("Rejected out-of-turn play by {}", playerId);
@@ -143,7 +166,6 @@ public class BelotGameService {
 
             save(game);
 
-            // Record PLAY_CARD
             Map<String, Object> payload = new HashMap<>();
             payload.put("playerId", playerId);
             payload.put("card", card.toString());
@@ -151,7 +173,6 @@ public class BelotGameService {
             payload.put("legal", isLegal);
             matchService.recordMove(gameId, MoveType.PLAY_CARD, payload, 0.0);
 
-            // If trick completed, record END_TRICK with winner and points
             int afterTricks = game.getCompletedTricks().size();
             if (afterTricks > beforeTricks) {
                 Trick last = game.getCompletedTricks().get(game.getCompletedTricks().size() - 1);
@@ -330,6 +351,8 @@ public class BelotGameService {
 
         Trick trickForDisplay = getTrickForDisplay(g);
 
+        Long expiresAt = g.getChallengeWindowExpiresAt();
+
         return new PublicGameView(
                 g.getGameId(),
                 g.getGameState(),
@@ -344,7 +367,8 @@ public class BelotGameService {
                 tieBrk,
                 seatingOrder,
                 declarations,
-                belaDeclaredByPlayer
+                belaDeclaredByPlayer,
+                expiresAt
         );
     }
 
@@ -400,6 +424,7 @@ public class BelotGameService {
         try {
             BelotGame g = getOrThrow(matchId);
             g.cancelMatch();
+            cancelWindowTimer(matchId);
             save(g);
 
             matchService.recordMove(matchId, MoveType.SYSTEM, Map.of("by", callerId), 0.0);
@@ -418,17 +443,16 @@ public class BelotGameService {
         return new backend.belatro.dtos.DeclarationsDTO(bela, seqs, four, bestSeq);
     }
 
-    // Callback target – invoked by BelotGame at the end of a hand
-    public void recordHandEnd(String gameId,
+    public void recordHandEnd(BelotGame game,
                               int teamAHandPoints, int teamBHandPoints,
                               int teamADeclPoints, int teamBDeclPoints,
                               int teamATricksWon, int teamBTricksWon,
                               boolean padanje, boolean capot) {
 
-        BelotGame game = getOrThrow(gameId); // to include current total scores
+        save(game);
 
-        int finalScoreA = game.getTeamAScore();
-        int finalScoreB = game.getTeamBScore();
+        String gameId = game.getGameId();
+
         Map<String, Object> payload = new HashMap<>();
         payload.put("teamAHandPoints", teamAHandPoints);
         payload.put("teamBHandPoints", teamBHandPoints);
@@ -440,9 +464,117 @@ public class BelotGameService {
         payload.put("capot", capot);
         payload.put("finalScoreA", game.getTeamAScore());
         payload.put("finalScoreB", game.getTeamBScore());
-        payload.put("finalTeamAScore", finalScoreA);
-        payload.put("finalTeamBScore", finalScoreB);
+        payload.put("finalTeamAScore", game.getTeamAScore());
+        payload.put("finalTeamBScore", game.getTeamBScore());
 
         matchService.recordMove(gameId, MoveType.END_HAND, payload, 0.0);
+
+        LOGGER.info("recordHandEnd called for gameId={} ; domain state={}", gameId, game.getGameState());
+
+        if (game.getGameState() == GameState.COMPLETED) return;
+        if (game.getGameState() == GameState.HAND_COMPLETE) {
+        LOGGER.info("recordHandEnd: opening challenge window for gameId={}", gameId);
+            openChallengeWindow(game);   // <-- pass the instance, not the id
+        } else {
+            LOGGER.info("recordHandEnd: domain did not set HAND_COMPLETE (state={}), not opening window", game.getGameState());
+        }
     }
+
+
+
+    private void openChallengeWindow(BelotGame g) {
+        String gameId = g.getGameId();
+
+        cancelScheduledFutureOnly(gameId); //
+
+        Instant expiresAt = Instant.now().plusMillis(CHALLENGE_WINDOW_MS);
+        long expiresMs = expiresAt.toEpochMilli();
+
+        g.setChallengeWindowExpiresAt(expiresMs);
+        save(g);                                   // persist
+        eventPublisher.publishEvent(new GameStateChangedEvent(gameId)); // push to clients
+        LOGGER.info("openChallengeWindow -> gameId={} expiresAt={}", gameId, expiresMs);
+
+        scheduledWindowExpiry.put(gameId, expiresMs);
+        ScheduledFuture<?> f = scheduler.schedule(
+                () -> onChallengeWindowExpired(gameId, expiresMs), // token-aware
+                expiresAt
+        );
+        postHandTimers.put(gameId, f);
+    }
+
+    private void cancelWindowTimer(String gameId) {
+
+
+        ScheduledFuture<?> f = postHandTimers.remove(gameId);
+
+        LOGGER.info("cancelWindowTimer -> cleared expiry for gameId={}", gameId);
+
+        if (f != null) {
+            try { f.cancel(false); } catch (Exception ex) { LOGGER.warn("cancelWindowTimer: {}", ex.getMessage()); }
+        }
+
+        try {
+            BelotGame g = get(gameId);
+            if (g != null && g.getChallengeWindowExpiresAt() != null) {
+                g.setChallengeWindowExpiresAt(null);
+                save(g); // broadcasts state change
+
+                eventPublisher.publishEvent(new GameStateChangedEvent(gameId));
+            }
+        } catch (Exception ex) {
+            LOGGER.warn("Failed clearing persisted challengeWindowExpiresAt for {}: {}", gameId, ex.getMessage());
+        }
+    }
+
+    private void onChallengeWindowExpired(String gameId, long expectedExpiresMs) {
+        LOGGER.info("onChallengeWindowExpired fired for gameId={} expected={}", gameId, expectedExpiresMs);
+        var lock = lockFor(gameId); lock.lock();
+        try {
+            BelotGame g = getOrThrow(gameId);
+            Long current = g.getChallengeWindowExpiresAt();
+            if (current == null || !current.equals(expectedExpiresMs) || g.getGameState() != GameState.HAND_COMPLETE) {
+                LOGGER.info("onChallengeWindowExpired: stale/irrelevant; current={}, state={}", current, g.getGameState());
+                return;
+            }
+
+            boolean advanced = g.startNextHandAfterWindow();
+            clearWindowExpiryIfMatches(gameId, expectedExpiresMs, "natural_expiry");
+
+            if (advanced) {
+                matchService.recordMove(gameId, MoveType.SYSTEM, Map.of("event","CHALLENGE_WINDOW_EXPIRED"), 0.0);
+                save(g);
+                eventPublisher.publishEvent(new GameStateChangedEvent(gameId));
+            }
+        } finally {
+            scheduledWindowExpiry.remove(gameId, expectedExpiresMs);
+            cancelScheduledFutureOnly(gameId);
+            lock.unlock();
+        }
+    }
+
+
+
+    private void cancelScheduledFutureOnly(String gameId) {
+        ScheduledFuture<?> f = postHandTimers.remove(gameId);
+        if (f != null) {
+            try { f.cancel(false); }
+            catch (Exception ex) { LOGGER.warn("cancelScheduledFutureOnly: {}", ex.getMessage()); }
+        }
+    }
+
+    private void clearWindowExpiryIfMatches(String gameId, Long expected, String reason) {
+        BelotGame g = getOrThrow(gameId);
+        Long cur = g.getChallengeWindowExpiresAt();
+        if (!Objects.equals(cur, expected)) {
+            LOGGER.info("clearWindowExpiryIfMatches: skip (current={}, expected={}) reason={}", cur, expected, reason);
+            return;
+        }
+        g.setChallengeWindowExpiresAt(null);
+        save(g);
+        eventPublisher.publishEvent(new GameStateChangedEvent(gameId));
+        LOGGER.info("clearWindowExpiryIfMatches: cleared for gameId={} reason={}", gameId, reason);
+    }
+
+
 }
